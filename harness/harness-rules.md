@@ -9,12 +9,14 @@
 
 | 工具 | 角色 | 负责阶段 |
 |---|---|---|
-| Claude CLI（Claude Code） | Planner + Generator（需求拆解 + 功能实现 + 修复 + 记忆维护） | `new` / `planning` / `building` / `fixing` / `done` |
+| Claude CLI（Claude Code） | Planner + Generator（需求拆解 + 功能实现 + 修复 + 记忆维护）<br>**v1.0 可升级为 Orchestrator**（主动派发子进程） | `new` / `planning` / `dispatching` / `building` / `fixing` / `done` |
 | Codex | Evaluator（测试设计 + 执行 + 验收 + 复验） | `verifying` / `reverifying` |
 
 **职责边界说明：**
 - Claude CLI 负责全流程：需求拆解、规格文档、功能实现、修复、记忆维护。不写任何测试。
 - Codex 拥有完整的「测试域」——设计测试用例、编写测试脚本、执行测试、分析结果、输出报告。
+
+**v1.0 新增 Orchestrator 角色（Claude CLI 承担）：** Orchestrator 是 Planner 的超集，新增主动派发 Generator / Evaluator 子进程的能力。触发条件：`progress.json` 存在 `orchestration` 字段。详见 [orchestrator.md](orchestrator.md)。**v0.x 项目（无 orchestration 字段）继续按传统 Planner 行为工作，完全向后兼容。**
 
 ## Feature 执行者（executor）
 
@@ -136,21 +138,25 @@ git push origin main
 
 | status | 执行工具 | 加载文件 | 动作 |
 |---|---|---|---|
-| `new` | Claude CLI | planner.md | 拆解需求，生成 features.json，写 spec |
-| `planning` | Claude CLI | planner.md | 继续 planning（上次中断时） |
-| `building` | Claude CLI | generator.md | 按功能列表逐条实现 |
-| `verifying` | Codex | evaluator.md | 首轮验收 |
-| `fixing` | Claude CLI | generator.md | 根据 evaluator_feedback 修复 |
-| `reverifying` | Codex | evaluator.md | 复验，写 signoff 报告 |
-| `done` | Claude CLI | planner.md | 更新记忆，处理 proposed-learnings，询问下一批次 |
+| `new` | Claude CLI | planner.md 或 orchestrator.md¹ | 拆解需求，生成 features.json，写 spec |
+| `planning` | Claude CLI | 同上 | 继续 planning（上次中断时） |
+| `dispatching` | Claude CLI | orchestrator.md | 派发 Generator / Evaluator 子进程（v1.0 专有）|
+| `building` | Claude CLI | generator.md（或由 Orchestrator 派发子进程实现）| 按功能列表逐条实现 |
+| `verifying` | Codex | evaluator.md（或由 Orchestrator 派发子进程验收）| 首轮验收 |
+| `fixing` | Claude CLI | generator.md（或由 Orchestrator 派发）| 根据 evaluator_feedback 修复 |
+| `reverifying` | Codex | evaluator.md（或由 Orchestrator 派发）| 复验，写 signoff 报告 |
+| `done` | Claude CLI | planner.md 或 orchestrator.md¹ | 更新记忆，处理 proposed-learnings，询问下一批次 |
+
+¹ 若 `progress.json` 含 `orchestration` 字段 → 加载 `orchestrator.md`；否则加载 `planner.md`。
 
 **阶段与角色的对应关系：**
 
-| 阶段 | 需要的角色 |
-|---|---|
-| `new` / `planning` / `done` | planner |
-| `building` / `fixing` | generator |
-| `verifying` / `reverifying` | evaluator |
+| 阶段 | v0.x 角色 | v1.0 Orchestrator 流程 |
+|---|---|---|
+| `new` / `planning` / `done` | planner | orchestrator（planner 超集）|
+| `dispatching` | —（不存在）| orchestrator（派发子进程）|
+| `building` / `fixing` | generator | orchestrator 派发 → generator 子进程执行 |
+| `verifying` / `reverifying` | evaluator | orchestrator 派发 → evaluator 子进程执行 |
 
 ### 第三步：读取对应角色文件
 根据第二步的判断结果加载 planner.md / generator.md / evaluator.md 并严格执行。
@@ -182,6 +188,7 @@ git push origin main
 
 ## 状态流转图
 
+**v0.x 流程（无 Orchestrator）：**
 ```
 普通批次 / 混合批次：
   new → planning → building → verifying → fixing ⟷ reverifying → done
@@ -193,11 +200,27 @@ Codex-only 批次（全部 executor:codex）：
                       ↑___________________________|
 ```
 
-- `planning → building`：仅当存在 `executor:generator` 的功能时
-- `planning → verifying`：当全部功能均为 `executor:codex` 时（跳过 building）
-- `verifying`：首轮，有问题 → `fixing`，全 PASS → `done`
-- `fixing`：修复完成 → `reverifying`，fix_rounds +1
-- `reverifying`：有问题 → `fixing`，全 PASS → `done`
+**v1.0 Orchestrator 流程（含 dispatching 状态）：**
+```
+普通批次 / 混合批次：
+  new → planning → dispatching → building → verifying → fixing → dispatching → reverifying → done
+                                                              ↑________________________________|
+                                                                   （fixing 后重新派发复验）
+
+Codex-only 批次：
+  new → planning → dispatching → verifying → fixing → dispatching → reverifying → done
+```
+
+**转移规则：**
+
+- `planning → building`（v0.x）：存在 `executor:generator` 的功能时
+- `planning → verifying`（v0.x）：全部 `executor:codex` 时（跳过 building）
+- `planning → dispatching`（v1.0）：spec 定稿、features.json 定稿后，Orchestrator 准备派发
+- `dispatching → building`（v1.0）：首个 Generator 子进程开始执行
+- `dispatching → verifying`（v1.0）：首个 Evaluator 子进程开始验收（Codex-only 批次 / building 完成后）
+- `verifying → fixing` / `verifying → done`：按 Evaluator verdict
+- `fixing → dispatching`（v1.0）：修复完成，Orchestrator 准备重新派发 Evaluator
+- `reverifying → fixing` / `reverifying → done`：复验结果
 
 ## 文档目录约定
 
@@ -324,6 +347,8 @@ git status --short docs/test-reports/ docs/test-cases/ .auto-memory/
 7. 压测执行、code review、安全审计等"产出报告"类任务，必须标注 `executor:codex`
 8. `role_assignments` 存在时，agent 只执行分配给自己的角色，不越界
 9. 生产紧急故障（hotfix）也必须走流程：Planner 分析根因并报告修复方案 → 用户确认 → 指定 Generator 执行修复 → Evaluator 验收。Planner 不得直接修改产品代码，即使是一行代码
+10. **v1.0 Orchestrator 边界铁律**：Orchestrator（Claude CLI 承担）不得直接修改 `src/` 下的产品代码。所有产品代码实现必须通过派发 Generator 子进程完成。Orchestrator 只能操作：`docs/` / `harness/` / `progress.json` / `features.json` / `backlog.json` / `.auto-memory/`。违反此铁律等同于破坏"三角色分离"。
+11. **v1.0 Evaluator 派发工具约束**：Orchestrator 派发 Evaluator 子进程必须调用 `codex exec`，不得调用 `claude -p`。这是"Generator ≠ Evaluator"铁律的工具层守护——即使 Orchestrator 代码写错，工具隔离也能防止自评。
 
 ## 框架提案规则
 
