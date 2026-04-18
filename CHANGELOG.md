@@ -5,6 +5,44 @@
 
 ---
 
+## v0.9.1 — 2026-04-18（Repo 独立：从 aigcgateway 完全分离）
+
+**来源批次：** 独立任务（用户讨论时指出 framework 耦合在 aigcgateway 里已不合适）
+**触发原因：** Framework 已演进成 9 个版本、有独立文档套件、SVG 图、两个 bootstrap 脚本，事实上已是一个独立项目。继续寄居在 aigcgateway 里造成：commit 污染（framework commit 混在产品 commit 里）、贡献门槛高（外人需 clone 业务 repo）、身份不清、协作冲突（BILLING-AI 批次曾误把 framework commit 和产品 commit 打包）
+
+**变更内容：**
+
+- `aigcgateway/framework/` 整体删除（历史完整保留在本 repo，通过过去几个月的 `git subtree push` 已同步）
+- aigcgateway 侧新建 `.auto-memory/proposed-learnings.md` 作为本地暂存区，替代原 `framework/proposed-learnings.md`
+- aigcgateway 侧更新所有根目录 role 文件（harness-rules.md / planner.md / generator.md / evaluator.md / CLAUDE.md）指向新的工作流
+- 新增 `CONTRIBUTING.md` 到本 repo：
+  - 说明 repo 的角色（源码 vs dogfooding vs 用户）
+  - Commit 规范、版本号策略（SemVer-ish）、发布流程
+  - 从 aigcgateway 同步经验的 mermaid 工作流图
+  - 外部贡献指南（可接受 / 不接受 的 PR 类型）
+  - 本地开发测试方法
+  - 3 条 FAQ（与 aigcgateway 的关系、为何不用 submodule、历史完整性）
+
+**新工作流（aigcgateway ↔ harness-template 沉淀回流）：**
+
+```
+aigcgateway 批次运行中发现经验
+  → 追加到 aigcgateway/.auto-memory/proposed-learnings.md
+  → batch done 阶段 Planner 逐条确认
+  → cd ~/project/harness-template
+  → 编辑对应 .md（harness/ / docs/ / templates/）
+  → 更新本 CHANGELOG
+  → commit + push
+  → 打 tag（如需要）
+  → 回 aigcgateway 移除已同步条目
+```
+
+**影响范围：**
+- aigcgateway: 根目录运行时 harness 文件保持不动（当前版本的快照）；后续 framework 升级**不会**自动传播，需要手工 cp（这是设计选择，避免打断进行中的批次）
+- 本 repo: 成为 Triad Workflow 的正式唯一开发地
+
+---
+
 ## v0.9.0 — 2026-04-18（接入现有项目：adoption guide + 非破坏性 bootstrap）
 
 **来源批次：** 独立任务（用户讨论"如何把框架应用到已经研发一大半的项目"）
