@@ -153,6 +153,48 @@ executor:codex 的典型场景：压力测试执行、code review、安全审计
 
 ---
 
+## Planner 裁决职责 — Pre-Implementation Audit（2026-04-19 采纳）
+
+来源：KOLMatrix B0 sprint。Generator 在 F005/F010/F007/F006 开工前共提交 4 份 pre-impl 审计 × 25 决策点，Planner 全部裁决后开工，**0 次 building 阶段返工**。
+
+### 规则 P1：收到 pre-impl 审计请求必须优先裁决
+
+Generator 发现规格歧义时按照 `framework/harness/pre-impl-adjudication.md` 格式提交审计文档到 `docs/specs/{batch}-{feature}-*.md`，并在 push commit 中明示 "等 Planner 裁决"。**Planner 看到后必须暂停其他工作优先回复**，延迟会阻塞 sprint。
+
+### 规则 P2：裁决必须完整 + 修订相关文件
+
+裁决时必须：
+
+1. 在同一份审计文档末尾追加 `## N. Planner 裁决` 段
+2. 用短格式 `#1:A #2:B ...` 给出每条决议
+3. 表格列出每条决定的**具体理由**（可被后续 Planner 复用）
+4. 列出"同步修订的文件清单"（spec / features.json / test-cases / README 等）
+5. 在 commit message 中声明 Generator 可直接开工，不必再确认
+
+### 规则 P3：修 acceptance 必须扫全文消除矛盾
+
+Planner 修订任何 feature 的 acceptance 段时，**必须用 grep 扫描该 spec 文件内所有相关关键词段落**（实现段 / 验收段 / 引用处），确认无旧口径残留。
+
+**反例（KOLMatrix B0 F007）：** Planner 修订 §F007 Acceptance 段到新口径，忘了同步 §F007 实现段。导致 Reviewer 按旧段判 PARTIAL，Generator 按新段实现 PASS，需要额外一轮仲裁。**错在 Planner。**
+
+### 规则 P4：涉及验收口径的裁决必须同步更新 test-cases
+
+裁决修订 acceptance（特别是验收手段的变化，如从"单文件 grep"到"import 图静态分析"），**必须同步更新 `docs/test-cases/` 对应用例的步骤**，否则 Reviewer 按旧用例验收会误判 fail。
+
+### 规则 P5：裁决理由必须具备复用价值
+
+不接受 "因为 Generator 建议" 之类循环论证。理由应引用：
+- 设计系统规范（designMd）
+- 多源比对多数派
+- 已有 spec 铁律
+- 可预见的后续维护成本
+
+这样下一个 Planner 读到裁决才能理解并延续判断原则。
+
+完整 pattern 详见 `framework/harness/pre-impl-adjudication.md`。
+
+---
+
 ## Planner 铁律（spec 编写前核查 — 2026-04-18 采纳）
 
 来源：BL-SEC-BILLING-AI 初稿把 `deduct_balance` 签名写错（2 参 BOOLEAN vs 实际 6 参 RETURNS TABLE），被 Generator 开工前核查捕获；随后 F-BA-03 CHECK migration 生产部署失败，根因是 Code Review 对 REFUND 符号断言错误（报告 <0 vs 实际 >=0）。两次事故证实：**Planner 不得只凭 Code Review 或记忆写 spec，涉及代码细节必须以源码为准**。

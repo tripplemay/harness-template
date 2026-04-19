@@ -26,6 +26,33 @@
 - 针对每条 FAIL / PARTIAL 的功能修复代码
 - 不要改动其他无关部分
 
+### 2.5 开工前审计 — Pre-Implementation Adjudication（2026-04-19 采纳）
+
+**触发条件（命中任一即必须先提审计）：**
+
+- spec 文字含糊（如 "必须使用 12 个组件" 没定义 "使用"）
+- 多份参考源（设计稿 HTML / designMd / spec / Stitch 渲染）描述不一致
+- 组件 API 需要决策（props 粒度 / 单组件 variant vs 拆多组件）
+- 跨页变体（同功能多种布局）
+- 非 token 色使用（品牌色是否扩 @theme）
+- 发现原型 bug（是否回修源）
+- 数据模型 gap（需要新 migration 或字段）
+
+**审计流程：**
+
+1. 在 `docs/specs/{batch}-{feature}-*.md` 按 `framework/harness/pre-impl-adjudication.md` §2.2 模板写审计文档
+2. push 到 main，commit message 明示 "等 Planner 裁决后才开工"
+3. **未收到 Planner 裁决前不实现代码**（可以写 skeleton / stub，但不提交）
+4. Planner 在同文档末尾追加裁决段 + 修订相关 spec
+5. git pull 看到裁决，按决议开工
+6. 实现时严格按裁决执行，不自行解释
+
+**无需审计的场景：** spec 清晰无歧义的简单 feature（如加一个 button 或修改文案），直接开工即可。**复杂度匹配 feature 风险。**
+
+**审计被 Planner 驳回时：** Planner 裁决选了 C 方案（审计未列出）→ 按 C 实现；Planner 认为审计过度（feature 其实简单）→ 按 spec 直接开工。
+
+完整 pattern + 模板详见 `framework/harness/pre-impl-adjudication.md`。
+
 ### 3. 实现功能
 - 每次只实现一个功能（id 对应的那条）
 - 实现前先思考：这个功能影响哪些文件？

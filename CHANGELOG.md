@@ -5,6 +5,52 @@
 
 ---
 
+## v0.9.0 — 2026-04-19（Pre-Implementation Audit → Planner Adjudication 模式沉淀）
+
+**来源批次：** KOLMatrix B0 sprint（2026-04-18 ~ 2026-04-19）
+**触发原因：** B0 实施期 Generator johnsong 主动在 F005/F010/F007/F006 开工前提交 4 份 pre-impl 审计 × 25 决策点，Planner Kimi 全部裁决后开工。结果：**0 次 building 阶段返工 / 1 次 fixing（F007 口径争议且根因是 Planner 修 spec 不彻底）**。模式验证有效，沉淀为框架能力。
+
+**变更内容：**
+
+- 新增 `framework/harness/pre-impl-adjudication.md`（~370 行）：
+  - §1 问题定义：3 类高代价错误（spec 内部矛盾 / 跨源漂移 / 凭本能填空）
+  - §2 Pattern 核心：触发条件、审计文档模板、Planner 裁决回复格式、状态机配合
+  - §3 决策类型分类：Canonical 选择 / Props API / Spec 字面冲突 / 范围依赖决策
+  - §4 Anti-patterns：Planner 凭印象 / Generator 过度笼统 / 修 acceptance 不扫全文 / 审计漫反射 / Reviewer 按旧 spec
+  - §5 统计口径：审计→裁决延迟 / 命中率 / 返工率 / Reviewer 争议率
+  - §6 Planner 裁决必加项：扫全文铁律 / 同步更新 test-cases / 复用价值理由
+  - §7 与其他 harness 机制的关系
+  - §8 最小化使用示例
+  - §9 落地检查清单
+  - §10 版本历史
+
+- 更新 `framework/harness/planner.md`：
+  - 新增 §Planner 裁决职责 段（P1-P5 五条规则）
+  - 引用 pre-impl-adjudication.md 作为权威文档
+
+- 更新 `framework/harness/generator.md`：
+  - 新增 §2.5 开工前审计段
+  - 7 条触发条件 + 6 步流程
+  - 引用 pre-impl-adjudication.md
+
+- 同步更新项目 instance `planner.md` + `generator.md`（与 framework 保持一致）
+
+**设计决策：**
+- **不改 harness-rules.md**（核心不可修改）—— 通过 planner.md/generator.md 规则 + 新独立文档形式落地
+- **规则编号用 P1-P5**（Planner 系列）与已有铁律 1/2 区分
+- **模式可被 Skip**：简单 feature 无歧义直接开工，不强制每 feature 都审计（"复杂度匹配风险"）
+- **Generator 主动发起**：不是 Planner 强加的流程，而是 Generator 觉察歧义时的自我保护机制
+- **审计文档 = 决策日志**：裁决追加在同一文档末尾，自然形成可追溯的决策历史
+
+**KOLMatrix B0 实测数据：**
+- 4 份审计：`B0-app-shell-canonical-review.md` / `B0-f010-component-map.md` / `B0-f007-dashboard-plan.md` / `B0-f006-i18n-plan.md`
+- 25 决策点：11 (F005) + 6 (F010) + 7 (F007) + 8 (F006) − 重复
+- 0 次 building 返工
+- 1 次 fixing 轮（F007 签收口径争议 → Planner 仲裁修订 spec 消除矛盾）
+- 均延迟 ~1.5 小时（push 审计请求 → Planner push 裁决）
+
+---
+
 ## v0.8.0 — 2026-04-18（图文并茂文档套件首版）
 
 **来源批次：** 独立任务（用户要求为框架撰写图文并茂的介绍文档）
