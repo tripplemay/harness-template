@@ -239,14 +239,14 @@ fi
 echo "[7/7] 整理 framework/ 子目录..."
 if [ "$LAYOUT" = "degit" ]; then
   mkdir -p "$TARGET_DIR/framework"
-  # 移动子目录
-  for d in harness memory templates archive docs; do
+  # 移动子目录（含 v1.0 Phase 1 新增的 scripts/）
+  for d in harness memory templates archive docs scripts; do
     if [ -d "$SRC/$d" ] && [ ! -d "$TARGET_DIR/framework/$d" ]; then
       mv "$SRC/$d" "$TARGET_DIR/framework/"
     fi
   done
   # 移动顶层 md / sh（如存在）
-  for f in cowork-constraint-design.md proposed-learnings.md CHANGELOG.md INIT.md bootstrap.sh README.md; do
+  for f in cowork-constraint-design.md proposed-learnings.md CHANGELOG.md CONTRIBUTING.md INIT.md bootstrap.sh README.md; do
     if [ -f "$SRC/$f" ] && [ ! -f "$TARGET_DIR/framework/$f" ]; then
       mv "$SRC/$f" "$TARGET_DIR/framework/"
     fi

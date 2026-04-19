@@ -33,7 +33,7 @@ if [ -f "$TARGET_DIR/harness-rules.md" ]; then
   exit 1
 fi
 
-echo "→ Bootstrapping Triad Workflow（布局：$LAYOUT）"
+echo "→ Bootstrapping Triad Workflow（布局：${LAYOUT}）"
 
 # 1. Harness 角色文件到根目录
 cp "$SRC_PREFIX/harness/harness-rules.md"     "$TARGET_DIR/harness-rules.md"
@@ -97,9 +97,19 @@ if [ "$LAYOUT" = "flat" ]; then
   mv "$TARGET_DIR/memory"        "$TARGET_DIR/framework/"
   mv "$TARGET_DIR/templates"     "$TARGET_DIR/framework/"
   [ -d "$TARGET_DIR/archive" ] && mv "$TARGET_DIR/archive" "$TARGET_DIR/framework/"
+  # v1.0 Phase 1：scripts/ 是框架的子进程调度器，v0.x 项目用不到，归档到 framework/ 以便未来升级
+  [ -d "$TARGET_DIR/scripts" ] && mv "$TARGET_DIR/scripts" "$TARGET_DIR/framework/"
+  # docs/ 下的框架自身文档（01-concepts.md / v1.0-orchestration-plan.md / imgs/ 等）也归档到 framework/docs/
+  # 注意：只移动 docs/ 顶层的 *.md 和 imgs/，保留前面 mkdir 创建的用户子目录（specs/ / test-cases/ 等）
+  if ls "$TARGET_DIR"/docs/*.md >/dev/null 2>&1 || [ -d "$TARGET_DIR/docs/imgs" ]; then
+    mkdir -p "$TARGET_DIR/framework/docs"
+    find "$TARGET_DIR/docs" -maxdepth 1 -type f -name "*.md" -exec mv {} "$TARGET_DIR/framework/docs/" \;
+    [ -d "$TARGET_DIR/docs/imgs" ] && mv "$TARGET_DIR/docs/imgs" "$TARGET_DIR/framework/docs/"
+  fi
   [ -f "$TARGET_DIR/cowork-constraint-design.md" ] && mv "$TARGET_DIR/cowork-constraint-design.md" "$TARGET_DIR/framework/"
   [ -f "$TARGET_DIR/proposed-learnings.md" ] && mv "$TARGET_DIR/proposed-learnings.md" "$TARGET_DIR/framework/"
   [ -f "$TARGET_DIR/CHANGELOG.md" ] && mv "$TARGET_DIR/CHANGELOG.md" "$TARGET_DIR/framework/CHANGELOG.md"
+  [ -f "$TARGET_DIR/CONTRIBUTING.md" ] && mv "$TARGET_DIR/CONTRIBUTING.md" "$TARGET_DIR/framework/"
   # 根目录 README.md 原是 template landing（=framework/README.md），移走留出干净根目录
   [ -f "$TARGET_DIR/README.md" ] && mv "$TARGET_DIR/README.md" "$TARGET_DIR/framework/README.md"
 fi
@@ -109,9 +119,12 @@ if [ -f "$TARGET_DIR/framework/INIT.md" ]; then
   mv "$TARGET_DIR/framework/INIT.md" "$TARGET_DIR/INIT.md"
 fi
 
-# 9. bootstrap.sh 自身移走（flat 布局时它在根目录，完成后用处不大）
+# 9. bootstrap 脚本自身移走（flat 布局时它们在根目录，完成后用处不大）
 if [ "$LAYOUT" = "flat" ] && [ -f "$TARGET_DIR/bootstrap.sh" ]; then
   mv "$TARGET_DIR/bootstrap.sh" "$TARGET_DIR/framework/bootstrap.sh"
+fi
+if [ "$LAYOUT" = "flat" ] && [ -f "$TARGET_DIR/bootstrap-adopt.sh" ]; then
+  mv "$TARGET_DIR/bootstrap-adopt.sh" "$TARGET_DIR/framework/bootstrap-adopt.sh"
 fi
 
 cat <<EOF
