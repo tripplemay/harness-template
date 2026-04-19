@@ -242,6 +242,20 @@ B0 sprint 实测：
 - [ ] `.auto-memory/MEMORY.md` T2 条目触发条件含"pre-impl 审计"
 - [ ] `features.json` 的 acceptance 足够清晰，不留 3 类错误场景（§1）
 
+### 9.1 Planner 写 spec 自检清单（acceptance 定稿前必扫）
+
+> 来源：BI1-F010 acceptance 偏离案例 —— Planner 写 CI `integration-tests` job acceptance 为 "PG + Redis service container"，与 F002 Testcontainers helper 设计冲突，导致 Reviewer 字面判 PARTIAL，最终走 Planner Adjudication 修订文案。
+
+写完 acceptance 初稿后，Planner 必须在定稿前逐条核对：
+
+- [ ] **内部一致性：** acceptance 描述与**同批次**其他 feature 的 spec/helper 设计是否对齐？（典型冲突点：测试策略、容器方案、外部服务依赖、路径约定）
+- [ ] **网络/容器/外部服务：** 如批次选 Testcontainers，CI acceptance 就不应写 "service container"；如批次用 mocks，生产环境依赖描述就不应出现真实 endpoint。两者混用 = 死代码 + 维护困惑。
+- [ ] **引用路径：** spec 中提到的 `tests/helpers/*.ts` / `src/lib/*.ts` 路径是否与其他 feature 一致？
+- [ ] **术语统一：** 同一概念（"租户" / "tenant" / "tenant_id"）在整个 spec 中是否用同一词？
+- [ ] **与 ADR 对齐：** 批次所用技术栈、设计原则是否与 `docs/adr/` 中现有决策一致？不一致必须有新 ADR。
+
+这 5 条任一项没过，说明 Planner 还没准备好定稿——返回审阅。
+
 ---
 
 ## 10. 版本历史
@@ -249,3 +263,4 @@ B0 sprint 实测：
 | 日期 | 修订 | 来源 |
 |---|---|---|
 | 2026-04-19 | 初版沉淀 | KOLMatrix B0 sprint 实测 |
+| 2026-04-20 | §9.1 Planner 写 spec 自检清单 | KOLMatrix BI1-F010 acceptance 偏离案例 |

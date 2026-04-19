@@ -5,6 +5,27 @@
 
 ---
 
+## v0.9.1 — 2026-04-20（数据库模式沉淀 + Planner spec 自检清单）
+
+**来源批次：** KOLMatrix BI1-test-infrastructure sprint fixing round 1（2026-04-19）
+**触发原因：**
+- **BI1-F008：** marketer E2E flaky 根因是 PostgreSQL RLS 策略 `current_setting(..., true)::uuid` 直接 cast 遇空串 throw，Prisma 连接池复用导致随机命中。裁决 NULLIF 兜底 → 6 条 RLS 策略全改 → flaky 消除（5×20/20 PASS）。
+- **BI1-F010：** Planner spec 阶段笔误，acceptance 写 "PG + Redis service container" 与 F002 Testcontainers helper 设计冲突，Reviewer 字面判 PARTIAL。裁决修订文案 → Testcontainers 为正。
+
+两条经验均值得跨批次沉淀：第一条是技术坑（未来所有涉及 GUC/RLS 的 SQL 都可能踩），第二条是 Planner 自律规则（每批次都会用）。
+
+**变更内容：**
+
+- 新增 `framework/harness/database-patterns.md`（~80 行）：
+  - §1 RLS 策略 NULLIF 兜底：坑的成因、三态表、正确模板、反面方案、Planner 检查清单
+  - 未来涉及 RLS / 自定义 GUC / Prisma session 复用场景时必读
+
+- 更新 `framework/harness/pre-impl-adjudication.md`：
+  - §9.1 新增 Planner 写 spec 自检清单（5 条定稿前必扫）：内部一致性 / 网络容器外部服务 / 引用路径 / 术语统一 / ADR 对齐
+  - §10 版本历史追加 2026-04-20 条目
+
+---
+
 ## v0.9.0 — 2026-04-19（Pre-Implementation Audit → Planner Adjudication 模式沉淀）
 
 **来源批次：** KOLMatrix B0 sprint（2026-04-18 ~ 2026-04-19）
