@@ -187,3 +187,59 @@ gh run list --limit 3 --branch main
 ## 完成标准
 - **building 模式：** 所有 `executor:generator` 的功能 status 均为 "completed"（`executor:codex` 功能保持 pending，由 Codex 处理）→ 将 progress.json status 改为 "verifying"
 - **fixing 模式：** 所有被标为 FAIL/PARTIAL 的 `executor:generator` 功能已修复 → 将 progress.json status 改为 "reverifying"，fix_rounds +1
+
+---
+
+## 前端相关经验（2026-04-20 采纳，来源：aigcgateway Path A）
+
+### dynamic import 模块边界
+
+来源：aigcgateway BL-FE-PERF-01 F-PF-01 实战。首次 build `/dashboard` 仍是 281 kB（未降）根因：
+
+`dynamic(() => import('./foo'))` 懒加载 foo 的条件：**调用方不得静态 import foo 的任何 symbol**。
+
+```ts
+// ❌ 坏：page.tsx 静态引用 charts-section 导致 webpack 把整个模块（含 recharts）打进主 chunk
+import { PIE_COLORS, type ChartData } from "./charts-section";
+const ChartsSection = dynamic(() => import("./charts-section"));  // dynamic 失效！
+
+// ✅ 好：常量抽独立文件，page.tsx 从不触及 charts-section
+// dashboard/charts-constants.ts
+export const PIE_COLORS = [...];
+export type ChartData = { ... };
+
+// dashboard/charts-section.tsx
+"use client";
+import { PieChart } from "recharts";  // 仅此文件含 recharts
+import { PIE_COLORS, type ChartData } from "./charts-constants";
+
+// dashboard/page.tsx
+import { PIE_COLORS } from "./charts-constants";  // 纯静态，不触及 recharts
+const ChartsSection = dynamic(() => import("./charts-section"), { ssr: false });
+```
+
+**典型症状：** dynamic 配置写对了但 bundle 体积未降 → 检查调用方是否静态 import 了懒加载模块的任何 symbol。
+
+**适用：** 所有 `next/dynamic` 懒加载场景（图表库、编辑器、PDF viewer、富文本等重型依赖）。
+
+### Next.js App Router 路由约定
+
+来源：aigcgateway BL-FE-QUALITY fix round 5 F-FQ-03 #10。
+
+Next.js App Router 目录命名约定：
+
+| 前缀 | 含义 | 是否生成 route |
+|---|---|---|
+| `_xxx` / `__xxx` | private folder | ❌ 不生成（fetch 返 404） |
+| `(xxx)` | route group | ✅ 生成（括号不出现在 URL 中） |
+| `[xxx]` | dynamic segment | ✅ 生成（动态参数） |
+| `xxx` | 普通 | ✅ 生成 |
+
+**踩坑记录：** 内部测试 route 命名为 `src/app/(console)/__error-test` 看似可访问，实际 404，导致 Codex 验证 error.tsx zh-CN 文案连续多轮 FAIL。改名为 `error-test` 后 build 输出即出现在 route 列表。
+
+**开发期诊断/测试用途的 route 必须避开下划线前缀。**
+
+合法命名：`/error-test`、`/diag-foo`、`/devtools`
+非法命名：`/__error-test`、`/_dev-only`、`/_test-a11y`
+
+build 后验证：`next build` 输出的 route 列表中应包含新建的测试 route；若不见则命名可能撞到 private folder 约定。

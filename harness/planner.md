@@ -218,6 +218,23 @@ Planner 写 spec，若涉及以下内容，**必须先 Read 对应文件核实**
 
 **Generator 发现规格偏差时**：开工前提出"规格偏差报告"暂停；Planner 修订 spec 后再开工。此为双方义务。
 
+### 铁律 1.1：acceptance 的"实现形式"与"语义意图"必须分离
+
+写 acceptance 时问自己：**这条在验证功能行为还是实现细节？**
+
+- 若必须写具体技术形态（文件名 / 路径 / API 形态 / 网络请求形态），必须同时说明**允许的等价实现**
+- Next.js / Webpack / SWC 等编译期优化会改变资源形态，acceptance 不得锁死特定形态
+- Code Review 报告描述的实现细节当"线索"看，语义意图才是 acceptance 的本质
+
+**反例 → 正例：**
+
+- ✗ "DevTools Network 只加载 `messages/*.json`" → ✓ "只加载一个 locale 的资源（chunk 或 json 均可）"
+- ✗ "返回 HTTP 403" → ✓ "返回 MCP `isError: true`"（见铁律 2.1）
+- ✗ "使用 dayjs.format('YYYY-MM-DD')" → ✓ "格式化为 ISO 日期字符串"
+- ✗ "import { PIE_COLORS } from './charts-section'" → ✓ "使用 chart 渲染常量"
+
+来源：aigcgateway BL-FE-PERF-01 F-PF-02 i18n 口径偏差（Next.js 对 `import('./*.json')` 编译为 JS chunk 是标准优化，acceptance 锁死 `.json` 形态反而逼迫反最佳实践实现）。
+
 ### 铁律 2：Code Review 报告的事实性断言按"线索"处理，不按"真相"采信
 
 **符号/类型/约束/枚举/常量**类断言**必须双路交叉验证**：
@@ -245,6 +262,21 @@ Planner 写 spec，若涉及以下内容，**必须先 Read 对应文件核实**
 - 规格质量从"转述 Review 报告"提升到"与现网代码/数据一致"
 - Generator 开工前规格偏差检查成为常态（节省 fix round）
 - 重复上次错误将承担召回责任（hotfix / 新修正批次）
+
+### 铁律自检规则（2026-04-20 采纳）
+
+**写完 acceptance 后，对照已采纳铁律清单逐条自检：**
+
+- [ ] 铁律 1：涉及代码细节时，已 Read 源码 + file:line 引用？
+- [ ] 铁律 1.1：具体技术形态（文件名/路径/API/网络请求）是否锁死？是否允许等价实现？
+- [ ] 铁律 2：Code Review 符号/类型/约束断言是否双路交叉验证？
+- [ ] 铁律 2.1：协议返回形式是否标明协议层（HTTP/MCP/WebSocket）？
+
+**每条过一遍再 push。**
+
+来源：aigcgateway BL-SEC-POLISH 首轮验收 15 PASS / 2 PARTIAL / 1 FAIL — 其中 FAIL #1 违反铁律 1.1（"<50ms" 死数值），PARTIAL #14 违反铁律 2.1（"HTTP 429" 协议误解）。**铁律 2.1 在立下后 10 天内第二次被同一 Planner 违反**，证明有规则不等于会应用。自检清单应作为 spec push 前的最后一步。
+
+**扩展：** 铁律清单随时间增长，Planner 必须在清单变化时同步更新自检项；CHANGELOG 每次新增铁律时，同步在本小节追加 checkbox 项。
 
 ---
 

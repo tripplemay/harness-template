@@ -5,6 +5,51 @@
 
 ---
 
+## v0.9.3 — 2026-04-20（aigcgateway Path A 3 条回流：铁律 1.1 / 自检规则 / Mid-Impl 裁决 / Next.js 坑）
+
+**来源：** aigcgateway 项目 Path A 11 批次 completeness 沉淀回流。Path A 2026-04-17 启动，2026-04-20 收官，累计解决 Code Review 13 Critical + 40+ High（具体 10 批主线 + 1 插入 BILLING-CHECK-FOLLOWUP），新增 76 条单测（96 → 172），framework 从 v0.7.0 演进到 v0.7.3。
+
+**变更内容：**
+
+### 新增 Planner 铁律 1.1：实现形式 vs 语义意图分离
+
+来源：BL-FE-PERF-01 F-PF-02 i18n 口径偏差。Planner spec 要求 "DevTools Network 只加载 messages/*.json"，但 Next.js 对 `import('./*.json')` 的标准行为是编译为独立 JS chunk（`messages-[hash].js`），不是 `.json` 请求。Generator 实现完美达成 bundle 优化目标（dashboard 281→169 kB），但被死板 acceptance 判 FAIL。
+
+**规则（写入 planner.md 铁律小节）：**
+- 写 acceptance 时问自己："这条在验证功能行为还是实现细节？"
+- 必须写具体技术形态时，同时说明允许的等价实现
+- Next.js/Webpack/SWC 等编译期优化会改变资源形态，acceptance 不得锁死
+
+### 新增 Planner 铁律自检规则
+
+来源：BL-SEC-POLISH 首轮验收 15 PASS / 2 PARTIAL / 1 FAIL — 其中 FAIL #1 违反铁律 1.1，PARTIAL #14 违反铁律 2.1。**铁律 2.1 立下后 10 天内第二次被同一 Planner 违反**，证明有规则不等于会应用。
+
+**规则（写入 planner.md 铁律小节）：** 写完 acceptance 后，对照已采纳铁律清单逐条 checkbox 自检，每条过一遍再 push。铁律清单扩增时同步更新自检项。
+
+### pre-impl-adjudication.md 新增 §10 附录：Mid-Impl 裁决变体
+
+来源：BL-SEC-POLISH 首轮验收事件同上，同时产生 fixing 阶段裁决流程的首次应用。pre-impl 场景是开工前 Generator 发现歧义；mid-impl 场景是开工后 fixing 阶段 Generator 发现 acceptance 条款与其他 spec 条款 / 协议规范 / Planner 设计意图冲突。
+
+**关键要点：**
+- 文件目录从 `docs/specs/` 改为 `docs/adjudications/`（与批次 spec 区分）
+- 触发条件：spec 内部矛盾 / 协议规范冲突 / Planner session_notes 冲突
+- Planner 优先自检铁律（大概率自己违反了）
+- 修订 spec 时 acceptance 旁必须注明"【YYYY-MM-DD 裁决修订】"
+
+### generator.md 新增"前端相关经验"小节
+
+两条实战坑：
+
+1. **dynamic import 模块边界**（aigcgateway BL-FE-PERF-01 F-PF-01）：
+   `dynamic(() => import('./foo'))` 要真正懒加载，调用方**不得静态 import** foo 的任何 symbol。常量需抽独立 `*-constants.ts`。否则 webpack 把整个 module（含重依赖）打进主 chunk。
+
+2. **Next.js App Router 路由约定**（aigcgateway BL-FE-QUALITY fix round 5）：
+   `_xxx` / `__xxx` 开头的目录是 private folder，不生成 route。测试/诊断 route 命名必须避开下划线前缀（如 `/error-test` 而非 `/__error-test`）。
+
+**影响范围：** 所有使用 harness-template 的 Next.js 项目直接受益；非 Next.js 项目的 dynamic import 坑（泛化到 webpack 静态分析边界）也适用。
+
+---
+
 ## v0.9.2 — 2026-04-20（回流：Pre-Impl Audit 模式 + ADR 系统）
 
 **来源批次：** joyce 项目（KOLMatrix）dogfooding 沉淀回流。

@@ -249,9 +249,60 @@ Generator git pull 看到裁决 → 真正开始实现
 
 ---
 
-## 10. 版本历史
+## 10. 附录：fixing 阶段的裁决变体（mid-impl）
+
+来源：aigcgateway BL-SEC-POLISH 首轮验收（Round 1）— 首次应用 fixing 阶段裁决流程。
+
+### 10.1 场景差异
+
+| 维度 | Pre-Impl（§1-8） | Mid-Impl（本附录） |
+|---|---|---|
+| 触发时机 | 开工前（building 开始之前） | 开工后（fixing 阶段，某 feature 已 FAIL/PARTIAL） |
+| 发现者 | Generator 读 spec 时 | Generator 收到 Evaluator feedback 后 |
+| 文件位置 | `docs/specs/{batch}-{feature}-*.md`（审计与 spec 同目录） | `docs/adjudications/{batch}-adjudication-request-{YYYY-MM-DD}.md` |
+| 典型触发 | 规格歧义 / 跨源漂移 / API 设计 | **spec acceptance 条款内部矛盾** / acceptance 与协议规范冲突 / acceptance 与 Planner 设计意图冲突 |
+
+### 10.2 触发条件（Generator 必须落盘裁决申请）
+
+fixing 阶段发现 Evaluator 按 acceptance 字面判 FAIL，但代码实现**有合理理由不动**：
+
+- (a) **spec 内部矛盾** — acceptance 某条与同 spec 内的背景 / 风险分析 / 设计决策冲突（示例：acceptance 要求 <50ms，spec 背景却说"抗时序枚举"）
+- (b) **协议 / 语言 / 平台规范** — acceptance 违反 MCP SDK / HTTP 标准 / Next.js 约定等（示例：要求 MCP tool 返 HTTP 429，但 MCP 协议不支持）
+- (c) **Planner session_notes 设计目标** — acceptance 与 Planner 显式写入 progress.json 的设计意图冲突
+
+### 10.3 流程
+
+1. Generator 落盘 `docs/adjudications/<batch>-adjudication-request-<date>.md`，包含：
+   - 冲突描述（acceptance 原文 vs 冲突源的原文引用）
+   - Generator 当前实现 + 实测数据
+   - 2-3 个候选方案（含 "保留当前实现 + 修订 spec" 方案）
+   - Generator 意见 + 需要 Planner 决定的选项
+2. commit + push；commit message 明示"等 Planner 裁决"
+3. **Generator 不自主回退或坚持**，等裁决
+4. Planner 读取后在文件末尾填裁决栏：`裁决点 #X：[A/B/其他] + 修订说明`
+5. Planner 同步修订 spec / features.json（若选 A = 保留实现 + 修订口径）或指示回退（若选 B）
+6. push 后 Generator / Evaluator 按新口径继续
+
+### 10.4 Mid-Impl 裁决的特殊要求
+
+- **Planner 自检优先：** 收到 mid-impl 裁决请求，优先核查是否违反了自己立过的铁律（见 `planner.md` §铁律自检规则）。若是，不修代码修 spec，并承认失误。
+- **修订 spec 时必须注明来源：** acceptance 旁加 `【2026-04-XX 裁决修订】`，防止未来二次困惑
+- **同步追加到 proposed-learnings：** 若此类冲突为 pattern（非个案），沉淀为新的 Planner 铁律
+
+### 10.5 aigcgateway 首次应用（参考案例）
+
+- 批次：BL-SEC-POLISH
+- 文件：`docs/adjudications/BL-SEC-POLISH-adjudication-request-2026-04-19.md`
+- 裁决点 #1（acceptance <50ms vs 抗时序枚举）+ #14（HTTP 429 vs MCP isError）
+- Planner 全部采纳方案 A（保留实现 + 修订 spec），并承认 2 次违反自己立的铁律（1.1 和 2.1）
+- 效果：Generator 只改 #13 一个纯 bug，reverifying 通过；避免了按错误 acceptance 回退实现引入新漏洞
+
+---
+
+## 11. 版本历史
 
 | 日期 | 修订 | 来源 |
 |---|---|---|
 | 2026-04-19 | 初版沉淀 | KOLMatrix B0 sprint 实测 |
 | 2026-04-20 | 回流 harness-template | 去除项目特定示例，保留通用 pattern |
+| 2026-04-20 | 新增 §10 附录：fixing 阶段的 mid-impl 裁决变体 | aigcgateway BL-SEC-POLISH 首次应用 |
