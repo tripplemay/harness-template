@@ -69,10 +69,19 @@ mkdir -p "$TARGET_DIR/docs/specs"
 mkdir -p "$TARGET_DIR/docs/test-cases"
 mkdir -p "$TARGET_DIR/docs/test-reports/user_report"
 mkdir -p "$TARGET_DIR/docs/dev"
+mkdir -p "$TARGET_DIR/docs/adr"
 touch "$TARGET_DIR/docs/specs/.gitkeep"
 touch "$TARGET_DIR/docs/test-cases/.gitkeep"
 touch "$TARGET_DIR/docs/test-reports/user_report/.gitkeep"
 touch "$TARGET_DIR/docs/dev/.gitkeep"
+
+# 5.1 ADR 基础设施（v0.9.2 回流）— 复制模板和 README 到 docs/adr/
+if [ -f "$SRC_PREFIX/templates/adr/000-template.md" ]; then
+  cp "$SRC_PREFIX/templates/adr/000-template.md" "$TARGET_DIR/docs/adr/000-template.md"
+fi
+if [ -f "$SRC_PREFIX/templates/adr/README.md" ]; then
+  cp "$SRC_PREFIX/templates/adr/README.md" "$TARGET_DIR/docs/adr/README.md"
+fi
 
 # 6. .gitignore
 if [ ! -f "$TARGET_DIR/.gitignore" ]; then

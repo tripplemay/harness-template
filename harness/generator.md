@@ -26,6 +26,38 @@
 - 针对每条 FAIL / PARTIAL 的功能修复代码
 - 不要改动其他无关部分
 
+### 2.5 开工前审计 — Pre-Implementation Adjudication（2026-04-20 采纳）
+
+**核心原则：** 在动代码之前，如果发现规格歧义或跨源漂移，**主动提交审计文档请 Planner 裁决**，而不是自己解释后开工。
+
+来源：KOLMatrix 项目 B0 sprint 实测（25 决策点 × 0 building 返工）。完整 pattern 详见 [`pre-impl-adjudication.md`](pre-impl-adjudication.md)。
+
+**触发条件（命中任一即必须先提审计）：**
+
+- spec 文字含糊（如 "必须使用 N 个组件" 未定义 "使用"）
+- 多份参考源（设计稿 / HTML / designMd / spec）描述不一致
+- 组件 API 需要决策（props 粒度 / 单组件 variant vs 拆多组件）
+- 跨页 / 跨批次变体（同功能多种布局或用法）
+- 非 token 色或非设计系统样式使用（品牌色是否扩 @theme）
+- 发现原型 / 参考源 bug（是否回修源）
+- 数据模型 gap（需新 migration 或字段）
+
+**不触发：** spec 清晰无歧义的简单 feature（加 button、改文案、单字段 CRUD 等）— 直接开工。**复杂度匹配风险**是核心原则。
+
+**审计流程（6 步）：**
+
+1. 按 [`pre-impl-adjudication.md`](pre-impl-adjudication.md) §2.2 模板写审计文档到 `docs/specs/{batch}-{feature}-*.md`
+2. push 到 main，commit message 明示"等 Planner 裁决后才开工"
+3. **未收到 Planner 裁决前不实现代码**（可写 skeleton / stub，但不提交）
+4. Planner 在同文档末尾追加裁决段 + 同步修订相关 spec / test-cases
+5. `git pull` 看到裁决，按决议开工
+6. 实现时严格按裁决执行，不自行解释
+
+**Anti-patterns（不得出现）：**
+- 审计过度笼统（"有歧义，请确认"而不列具体分歧）
+- 简单 feature 也写长 audit 文档（稀释信号价值）
+- 收到裁决后仍按自己理解实现（必须严格按 `#1:A #2:B` 决议）
+
 ### 3. 实现功能
 - 每次只实现一个功能（id 对应的那条）
 - 实现前先思考：这个功能影响哪些文件？

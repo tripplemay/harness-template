@@ -145,7 +145,7 @@ fi
 # ============================================================
 
 echo "[4/7] 补齐 docs 子目录..."
-for subdir in specs test-cases test-reports/user_report dev; do
+for subdir in specs test-cases test-reports/user_report dev adr; do
   if [ ! -d "$TARGET_DIR/docs/$subdir" ]; then
     mkdir -p "$TARGET_DIR/docs/$subdir"
     touch "$TARGET_DIR/docs/$subdir/.gitkeep"
@@ -154,6 +154,16 @@ for subdir in specs test-cases test-reports/user_report dev; do
     SKIPPED+=("docs/$subdir/")
   fi
 done
+
+# ADR 基础设施（v0.9.2 回流）— 复制模板和 README 到 docs/adr/
+if [ -f "$SRC/templates/adr/000-template.md" ] && [ ! -f "$TARGET_DIR/docs/adr/000-template.md" ]; then
+  cp "$SRC/templates/adr/000-template.md" "$TARGET_DIR/docs/adr/000-template.md"
+  ADDED+=("docs/adr/000-template.md")
+fi
+if [ -f "$SRC/templates/adr/README.md" ] && [ ! -f "$TARGET_DIR/docs/adr/README.md" ]; then
+  cp "$SRC/templates/adr/README.md" "$TARGET_DIR/docs/adr/README.md"
+  ADDED+=("docs/adr/README.md")
+fi
 
 # ============================================================
 # 8. CLAUDE.md — 顶部注入 Triad 规则（不覆盖）

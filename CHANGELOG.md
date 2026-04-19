@@ -5,6 +5,81 @@
 
 ---
 
+## v0.9.2 — 2026-04-20（回流：Pre-Impl Audit 模式 + ADR 系统）
+
+**来源批次：** joyce 项目（KOLMatrix）dogfooding 沉淀回流。
+joyce 项目 2026-04-19 在自己的 `framework/` 里沉淀了两套机制，经通用性评估后回流 harness-template。
+
+**触发原因：**
+- joyce B0 sprint 实测数据：4 次 pre-impl 审计 × 25 决策点 × **0 次 building 阶段返工 × 1 次 signoff 争议（Planner 自锅已补为铁律）**
+- 10 份 ADR 回溯建立，验证"架构决策记录"机制对新 agent 上手和规避循环讨论的价值
+- 用户决策采用方案 A：两项机制同时回流
+
+**变更内容：**
+
+### 新增 Pre-Implementation Audit → Planner Adjudication 机制
+
+- 新增 `harness/pre-impl-adjudication.md`（~280 行，通用化版本）：
+  - §1 3 类规格问题定义
+  - §2 Pattern 核心（7 触发条件 + 审计文档模板 + Planner 裁决回复格式 + 状态机配合）
+  - §3 4 种常见决策类型分类
+  - §4 5 条 anti-patterns
+  - §5 4 个有效性指标
+  - §6 Planner 裁决必加的 3 项铁律
+  - §7 与其他 harness 机制的关系
+  - §8 极简格式示例
+  - §9 落地检查清单
+  - §10 版本历史（保留 KOLMatrix B0 首次实测基线数据）
+
+- 更新 `harness/planner.md` 新增 **§Planner 裁决职责** 段：
+  - P1 优先裁决：看到审计请求必须暂停其他工作
+  - P2 裁决完整：短格式决议 + 逐条理由 + 同步修订清单 + 可开工声明
+  - P3 扫全文铁律：修 acceptance 必须 grep 确认无旧口径残留（反例：KOLMatrix B0 F007）
+  - P4 同步 test-cases：涉及验收口径的修订必须同步 test-cases 用例
+  - P5 复用理由：裁决理由必须可被下个 Planner 复用（不接受循环论证）
+
+- 更新 `harness/generator.md` 新增 **§2.5 开工前审计** 段：
+  - 7 条触发条件 + 6 步流程
+  - 明确"复杂度匹配风险"原则 — 简单 feature 不强制审计
+  - 3 条 anti-patterns 提醒
+
+### 新增 ADR 系统
+
+- 新增 `templates/adr/` 目录：
+  - `000-template.md`：ADR 文档模板（Status / Context / Decision / Consequences / Alternatives / References / Notes）
+  - `README.md`：ADR 索引与使用指南
+    - "何时写 / 何时不写" 判据
+    - 状态流转规则（Proposed → Accepted → [Deprecated | Superseded by]）
+    - 编号约定（3 位数字，弃用保留不重用）
+    - 按主题索引框架（工程流程 / 技术栈 / 架构 / 视觉 / 外部服务 / 安全）
+    - 新 agent 上手指引
+
+- `bootstrap.sh` 和 `bootstrap-adopt.sh` 升级：
+  - 初始化 `docs/adr/` 子目录
+  - 自动复制 `templates/adr/000-template.md` 和 `README.md` 到新项目
+  - 新项目 bootstrap 后即刻有 ADR 基础设施可用（不需要手工拉取）
+
+**设计决策：**
+
+- **Pre-impl pattern 不改 harness-rules.md**（核心不可修改原则）— 通过 planner.md / generator.md 规则 + 新独立文档实现
+- **通用化改写原则：** 去除 joyce 中 KOLMatrix 特定示例（StatCard / KolCard / 12 组件硬锁 / HTML 标签对比），保留抽象 pattern + 7 触发条件 + P1-P5 规则 + anti-patterns + 首次实测基线数据
+- **ADR 与 pre-impl 的分工：** ADR 记录"已决策且影响多批次"的事项，pre-impl 处理"单批次内的规格歧义"。有 ADR 的主题 pre-impl 审计时直接引用 ADR，无需重新裁决
+- **ADR 系统默认启用：** bootstrap 时自动创建 `docs/adr/`，已确认值得作为基础设施（不需 opt-in）
+- **joyce 项目本地 ADR 内容不回流**（10 份全部 KOLMatrix 特定，符合"项目特定不沉淀"原则）
+
+**joyce 来源实测数据（保留在 pre-impl-adjudication.md §5）：**
+- 4 次审计 × 25 决策点 × 均延迟 ~1.5 小时
+- 审计命中率 2.5（25 ÷ 10 features）
+- building 返工率 0 ✓
+- signoff 争议率 1（F007 口径，已沉淀为 P3 铁律）
+
+**向后兼容性：**
+- 新增内容都是加法，不改现有规则
+- v0.x 项目升级无需操作（pre-impl pattern 是可选能力，生效需 Generator 主动发起）
+- 已接入项目跑 `bootstrap-adopt.sh` 可自动获得 `docs/adr/` 基础设施
+
+---
+
 ## v0.9.1 — 2026-04-18（Repo 独立：从 aigcgateway 完全分离）
 
 **来源批次：** 独立任务（用户讨论时指出 framework 耦合在 aigcgateway 里已不合适）
