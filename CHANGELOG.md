@@ -5,6 +5,33 @@
 
 ---
 
+## v0.9.2 — 2026-04-20（DB 命名 migration-consistency + PM2 zero-downtime 3 条件）
+
+**来源批次：** KOLMatrix BI2-deployment-automation sprint（2026-04-20）
+**触发原因：**
+- **BI2 DB 命名坑：** init migration `20260418010000_app_role` 硬编码 `GRANT CONNECT ON DATABASE kolmatrix`，spec / architecture / environment / infrastructure / runbook 5 份文档却写 `kolmatrix_prod`。首次 prod bootstrap 被迫用 migration 名，之后 Planner 裁决全文档对齐。值得作为 Planner spec 起草期铁律沉淀。
+- **BI2-F002 PM2 zero-downtime 两轮证伪：** Planner v1 spec 写"cluster + instances=2 自动 zero-downtime"两次被 Generator 实测驳倒（Round A EADDRINUSE crash loop；Round A' 93% 丢包）。最终方案 B1（custom server.js + wait_ready）达标。"zero-downtime 是 3 条件共同满足，不是 cluster 开关"值得跨批次沉淀。
+
+**变更内容：**
+
+- 更新 `framework/harness/database-patterns.md`：
+  - §2 新增 "数据库命名 / 角色 / Grant 对象必须与 migration 硬编码一致"
+  - §2.3 Planner spec 起草期检查清单（4 条）
+  - §2.4 解释为什么"主动对齐 migration"比"改 migration"正确
+  - 版本历史追加 2026-04-20 §2 条目
+
+- 新增 `framework/harness/deploy-patterns.md`（~130 行）：
+  - §1 PM2 cluster zero-downtime reload 的 3 个必要条件
+  - §1.1 坑的分析（2 轮实测数据）
+  - §1.2 3 条件（直接子进程 / process.send('ready') / wait_ready+listen_timeout）
+  - §1.3 Next.js 生产部署唯一可靠路径 = custom server.js（含完整 ~22 行代码）
+  - §1.4 Planner spec 起草期检查清单（6 条）
+  - §1.5 反面案例表（BI2 v1 路径作废记录）
+
+- 归档：`framework/archive/proposed-learnings-archive-v0.9.md` 追加 2 条用户确认记录
+
+---
+
 ## v0.9.1 — 2026-04-20（数据库模式沉淀 + Planner spec 自检清单）
 
 **来源批次：** KOLMatrix BI1-test-infrastructure sprint fixing round 1（2026-04-19）

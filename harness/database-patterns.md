@@ -68,11 +68,57 @@ CREATE POLICY user_isolation ON "user"
 
 ---
 
+## 2. 数据库命名 / 角色 / Grant 对象必须与 migration 硬编码一致（Planner spec 起草期必扫）
+
+### 2.1 坑
+
+init migration 常含硬编码的 DB 名 / 角色名 / 权限对象名，例如：
+
+```sql
+-- prisma/migrations/20260418010000_app_role/migration.sql
+CREATE ROLE kolmatrix_app NOLOGIN;
+GRANT CONNECT ON DATABASE kolmatrix TO kolmatrix_app;
+--                     ↑ 这里硬编码了 DB 名
+```
+
+一旦 migration 被执行，该命名就成了**事实**：
+- 生产 DB 必须叫 `kolmatrix`（否则 `GRANT CONNECT ON DATABASE kolmatrix` 失败）
+- spec / architecture.md / environment.md 里写 `kolmatrix_prod` 就是漂移
+
+### 2.2 后果
+
+Planner spec 文档里假设一个 DB 名（如 "kolmatrix_prod"），但 init migration 写的是另一个（如 "kolmatrix"），导致：
+- 首次 bootstrap 生产被迫按 migration 命名（硬编码无法绕过），与 spec 不符
+- 所有引用 DB 名的下游文档（runbook / infrastructure.md / backup 脚本 / env file / deploy script）都要做一次对齐
+- Generator 要反复 SSH 修文件、Planner 要出裁决、多一次 round-trip
+
+KOLMatrix BI2 案例：prod bootstrap 时发现 migration 硬编码 `kolmatrix`，spec 和 5 份 docs 都写 `kolmatrix_prod`，最终 Planner 裁决方案 A（统一 follow migration 固定名 `kolmatrix`）全文档追随。
+
+### 2.3 Planner spec 起草期检查清单
+
+写涉及 database / role / grant 的 spec 前，**必须**先扫一遍：
+
+```bash
+# 查 migration 里所有硬编码的 DB 名、角色名、权限对象名
+grep -rE 'DATABASE|CREATE ROLE|GRANT|REVOKE|ALTER ROLE' prisma/migrations/*/migration.sql
+```
+
+- [ ] spec / architecture / environment / runbook / backup-script 里出现的 DB 名，与 migration 硬编码**完全一致**？
+- [ ] spec / role 相关段落里出现的 PG 角色名，与 migration `CREATE ROLE` 完全一致？
+- [ ] spec 里写的 "XXX user has Y privilege" 与 migration `GRANT/REVOKE` 一致？
+- [ ] 如果 spec 和 migration 冲突，**以 migration 为准**（已执行的事实）；不一致时 Planner 改 spec，不改 migration
+
+### 2.4 更深一层：为什么不能"改 migration"
+
+Prisma migration 一旦 `migrate deploy` 成功，记录进 `_prisma_migrations` 表，不能再改原文件（会 hash 不匹配）。修正名字需要新 migration `ALTER DATABASE ... RENAME` + `REVOKE / REGRANT`，生产执行风险远高于"文档追随 migration"。所以 Planner **主动对齐到 migration** 是正确方向。
+
+---
+
 ## 来源
 
-- KOLMatrix BI1-F008 marketer E2E flaky 根因（2026-04-19）
-- 裁决文档：`docs/specs/BI1-f008-rls-nullif-fix.md`
-- 修复 commit：`d438777`（NULLIF migration）
+- KOLMatrix BI1-F008 marketer E2E flaky 根因（§1，2026-04-19）
+- KOLMatrix BI2 DB 命名 spec 漂移（§2，2026-04-20）
+- 相关文档：`docs/specs/BI1-f008-rls-nullif-fix.md` / `docs/specs/BI2-deployment-automation-spec.md`
 
 ---
 
@@ -80,4 +126,5 @@ CREATE POLICY user_isolation ON "user"
 
 | 日期 | 修订 | 来源 |
 |---|---|---|
-| 2026-04-20 | 初版沉淀 | KOLMatrix BI1-F008 RLS flaky 根因分析 |
+| 2026-04-20 | 初版沉淀（§1 RLS NULLIF） | KOLMatrix BI1-F008 |
+| 2026-04-20 | §2 DB 命名 / 角色 / Grant 与 migration 一致性 | KOLMatrix BI2 DB 命名坑 |
