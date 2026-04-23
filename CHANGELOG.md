@@ -5,6 +5,29 @@
 
 ---
 
+## v0.9.3 — 2026-04-23（VPS working tree 卫生 + artifact in-git 强制）
+
+**来源批次：** KOLMatrix BAux1 deploy + BI3-F005 签收漏（2026-04-23）
+**触发原因：**
+- BAux1 触发 prod deploy 失败在 `git checkout` 步（VPS working tree 脏态 2 处）：
+  1. `scripts/cert-expiry-check.sh` 86 行 Bash 活在 VPS 3 天但从未 commit 入 git（BI3-F005 签收漏）
+  2. `src/middleware.ts` VPS 本地有 BI2 调试时的 `console.log` 未清理
+- 调查发现 Reviewer 当时 signoff 已走完 L1/L2/L3 验收，但未核对"脚本是否 `git ls-files` 能找到"。这是 framework 层签收清单的漏。
+
+**变更内容：**
+
+- 更新 `framework/harness/deploy-patterns.md`：
+  - §2 新增"VPS working tree 卫生 + artifact in-git 强制"（~80 行）
+  - §2.1 坑的典型触发链（Gap 1 签收漏 + Gap 2 工作区卫生）
+  - §2.2 症状（deploy-prod.sh 3/8 checkout 失败特征）
+  - §2.3 3 条防御规律（Reviewer 签收清单 + Generator/Planner 自律 + deploy-prod.sh early fail）
+  - §2.4 Reviewer 签收新 checklist 模板（必检 / 可选核对 3 项）
+  - §2.5 Planner spec 起草期 counter-check（acceptance 必须含 git-tracked 验收项）
+
+- 归档：`framework/archive/proposed-learnings-archive-v0.9.md` 追加 2026-04-23 坑记录
+
+---
+
 ## v0.9.2 — 2026-04-20（DB 命名 migration-consistency + PM2 zero-downtime 3 条件）
 
 **来源批次：** KOLMatrix BI2-deployment-automation sprint（2026-04-20）

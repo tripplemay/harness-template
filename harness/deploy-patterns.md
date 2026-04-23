@@ -96,12 +96,81 @@ app.prepare().then(() => {
 
 ---
 
+## 2. VPS working tree 卫生 + artifact in-git 强制
+
+### 2.1 两个关联 gap 的典型触发链
+
+**Gap 1（严重）：** Reviewer 签收"在 VPS 上产出某 artifact"类 feature 时只核对"artifact 存在 VPS"，**未核对"artifact 是否 in git"**。BI3-F005 `scripts/cert-expiry-check.sh` 被 Generator 在 VPS 直接编辑创建，Reviewer 确认脚本存在 + cron + email 告警链路通后签收 PASS，**但脚本从未 commit 入 git**。86 行可执行代码活在 prod 单机 3 天，任何 re-deploy / 迁机器 / 灾后恢复都会丢失。
+
+**Gap 2（工作区卫生）：** Generator 在 VPS SSH 直接编辑 `src/middleware.ts` 加 `console.log` 诊断 BI2-F002 的 UntrustedHost 问题后**未清理也未 commit**。3 天后 BAux1 触发 prod deploy，`deploy-prod.sh` 跑 `git checkout` 时被 working tree 冲突阻塞。
+
+### 2.2 症状（如何知道坑了）
+
+- `deploy-prod.sh` 在 "3/8 git fetch + checkout" 步骤失败
+- 失败信息：`error: Your local changes to the following files would be overwritten by checkout` 或 `The following untracked working tree files would be overwritten by checkout`
+- Deploy run 耗时不到 1 分钟（早 fail）
+- VPS 上 `git status` 显示有 ` M` 或 `??` 文件
+
+### 2.3 3 条防御规律
+
+**规律 1（Reviewer 签收清单）：** Feature acceptance 写"在 VPS 上产出 X"时，**Reviewer 签收清单必须核对该 artifact 是否 `git ls-files` 能找到**：
+
+```bash
+ssh <vps> "cd /opt/<project> && git ls-files <artifact-path>"
+# 应该输出该路径；空输出 = artifact 只活在 VPS 单点 = 拒绝签收
+```
+
+**规律 2（Generator + Planner 自律）：** VPS 上任何 `/opt/<project>` 内的 ad-hoc 编辑（SSH debug 改代码 / 临时加脚本）完成后必须：
+- **要么 clean checkout 丢弃**（`git checkout -- <file>`、`rm <file>`）
+- **要么 push 回 git**（`cd` 本地 repo → edit → commit → push → VPS `git pull`）
+- 不允许长期保留 working tree 脏态（超过本次 debug session）
+
+**规律 3（deploy-prod.sh 前置 check）：** 部署脚本加 `git status --porcelain` early fail：
+
+```bash
+# 在 scripts/deploy-prod.sh step 1 "记 prev-sha" 之前加：
+STATUS=$(git status --porcelain)
+if [[ -n "$STATUS" ]]; then
+  echo "❌ VPS working tree not clean, aborting:"
+  echo "$STATUS"
+  exit 1
+fi
+```
+
+Early fail 好过 step 3 失败时备份已跑一半 + 状态难清理。
+
+### 2.4 Reviewer 签收新 checklist 模板
+
+涉及 VPS 产出的 feature，L1 自动化验收之后补一步：
+
+| 检查项 | 命令 | 期望 |
+|---|---|---|
+| artifact 存在 VPS | `ssh … "ls -la <path>"` | 文件存在 + 权限合理 |
+| **artifact 在 git tracked** | `ssh … "cd /opt/<project> && git ls-files <path>"` | **输出非空**（该路径在 git index 中）|
+| artifact 与 git 版本一致（可选）| `ssh … "cd /opt/<project> && git diff <path>"` | 空输出（无 diff）|
+
+前两项**必检**，第三项可选（如果 VPS 有合法本地改动等待 push）。
+
+### 2.5 Planner spec 起草期的 counter-check
+
+涉及 VPS 部署 / 脚本 / cron 的 spec acceptance 写作时，**必须**包含以下 2 类验收项：
+
+```
+- [ ] 脚本 / config file 在 git tracked（`git ls-files <path>` 非空）
+- [ ] VPS 上 artifact 与 git 版本 byte-identical（或明确声明允许 drift）
+```
+
+仅写"VPS 上脚本存在"是不够的 —— 这会让 Reviewer 走短路径签收。
+
+---
+
 ## 来源
 
 - KOLMatrix BI2-F002 两轮重裁决 + Round 2 实测证伪（2026-04-20）
+- KOLMatrix BI3-F005 脚本未入 git + BAux1 deploy 失败（2026-04-23）
 - 裁决文档：`docs/specs/BI2-f002-zero-downtime-fix.md` v2
 - 交接文档：`docs/specs/BI2-f002-round2-adjudication.md`
-- 修复 commits：`ba11e6b`（custom server.js）+ `bc1de3b`（eslint-disable）
+- 修复 commits：`ba11e6b` / `bc1de3b` / `4f86fc0`（salvage cert-expiry-check.sh）
 
 ---
 
@@ -110,3 +179,4 @@ app.prepare().then(() => {
 | 日期 | 修订 | 来源 |
 |---|---|---|
 | 2026-04-20 | 初版沉淀（§1 PM2 zero-downtime 3 条件 + Next.js custom server 路径）| KOLMatrix BI2-F002 两轮证伪 |
+| 2026-04-23 | §2 VPS working tree 卫生 + artifact in-git 强制（3 条规律 + Reviewer checklist）| KOLMatrix BI3-F005 签收漏 + BAux1 deploy 失败 |
