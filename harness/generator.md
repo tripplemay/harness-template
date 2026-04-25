@@ -243,3 +243,32 @@ Next.js App Router 目录命名约定：
 非法命名：`/__error-test`、`/_dev-only`、`/_test-a11y`
 
 build 后验证：`next build` 输出的 route 列表中应包含新建的测试 route；若不见则命名可能撞到 private folder 约定。
+
+---
+
+## 测试相关经验（2026-04-25 采纳）
+
+### 测试 mock 层级 — 修复"穿透多层转换"类 bug 时的 mock 边界
+
+**适用场景：** 当修复涉及多层调用链时（如 parser 读某字段 → 中间某层 normalize 会剥该字段），单测的 mock 层级直接决定能否捕获生产 bug。
+
+**规则：** Generator 单测涉及"修改响应字段处理逻辑"或"穿透多层转换"的修复时，至少有 1 条单测从**最外层边界**（HTTP 层 / `global.fetch` / `fetchWithProxy` / SDK adapter 入口）mock，让中间所有层级真实执行，验证字段能完整穿透到目标位置。
+
+**反例：** 在"中间层"之上做 mock（override 中间层方法直接返回已组装好的对象），会掩盖中间层的副作用（剥字段、重组、归一化等），导致测试绿但生产红。
+
+**案例：** aigcgateway BL-IMAGE-PARSER-FIX fix round 1，F-IPF-02 的 6 条单测 override `chatCompletions` 返回含 images 的假响应，绕过了真实的 `normalizeChatResponse` 会剥 `images` 字段的 bug —— 单测全绿但生产部署后 100% 失败。
+
+**正面写法（伪代码）：**
+```ts
+// ❌ 坏：override 中间层 → 掩盖中间副作用
+vi.spyOn(adapter, 'chatCompletions').mockResolvedValue({ choices: [...], images: [...] });
+// 直接返回的对象绕过了 normalizeChatResponse 的剥字段逻辑
+
+// ✅ 好：mock 最外层 fetch → 中间层全部真实执行
+vi.spyOn(global, 'fetch').mockResolvedValue(new Response(JSON.stringify({...})));
+// 让 adapter → normalizer → parser 全链路真实跑，验证字段穿透
+```
+
+**Evaluator 配套：** Evaluator 在 code review 阶段须核对 Generator 单测的 mock 层级 —— 若发现"穿透多层转换"类修复的单测 mock 在中间层之上，必须要求至少补一条最外层边界 mock 的单测。
+
+来源：aigcgateway BL-IMAGE-PARSER-FIX fix round 1（单测全绿但生产 100% 失败）。

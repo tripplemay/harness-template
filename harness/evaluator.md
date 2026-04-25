@@ -91,6 +91,21 @@
 
 **验收标准：完全还原 HTML 代码。** 原型 HTML 是 source of truth，acceptance 只是摘要。实现应该是原型的机械翻译（HTML → React），不是语义重写。
 
+**单测 mock 层级核查（2026-04-25 采纳）：** 对"穿透多层转换"类修复（parser 读字段 / normalizer 剥字段 / SDK 适配层等），Evaluator 必须核对 Generator 单测的 mock 层级：
+
+- 若所有单测都在"中间层"之上 mock（如 override `adapter.chatCompletions` 直接返回组装好的对象），中间层副作用（剥字段、重组、归一化）被绕过，测试绿但生产红的风险高 → 判 PARTIAL，要求至少补一条最外层边界 mock（`global.fetch` / `fetchWithProxy`）的单测让中间层真实执行
+- 若已有最外层 mock 的单测覆盖关键字段穿透路径 → 通过
+
+参见 `generator.md` §测试相关经验 §测试 mock 层级。
+
+**运维依赖型 acceptance 处理（2026-04-25 采纳）：** Evaluator 验收时若发现某 acceptance 隐含运维侧依赖（pm2 log_date_format / 宿主 cron / GCP console / k8s configmap 等），不得直接 BLOCKED 卡死流程：
+
+- 立即触发 mid-impl adjudication（参考 `pre-impl-adjudication.md` §10），向 Planner 返还规格修订请求
+- Planner 应改为 DB / 应用层产物可量化的等价项（如 `call_logs.createdAt` 毫秒分桶 SQL）
+- 等待 spec 修订后再继续验收
+
+参见 `planner.md` §铁律 1.2。
+
 ### 5. 生成反馈报告
 将结果写入 progress.json 的 evaluator_feedback：
 ```json

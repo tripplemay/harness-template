@@ -5,6 +5,42 @@
 
 ---
 
+## v0.9.4 — 2026-04-25（aigcgateway BL-IMAGE-PARSER-FIX 3 条回流：铁律 1.2/1.3 + 测试 mock 层级）
+
+**来源：** aigcgateway BL-IMAGE-PARSER-FIX 批次 2026-04-21 三条经验沉淀（同一批次先后产生 3 条）。该批次 fix round 1 单测全绿但生产 100% 失败暴露 mock 层级问题；round 3 adjudication 暴露运维依赖型 acceptance + 零基线边界两类规格缺陷。BL-BILLING-AUDIT-EXT-P1 done 后批量回流。
+
+**变更内容：**
+
+### 新增 Planner 铁律 1.2：acceptance 证据来源限定
+
+来源：BL-IMAGE-PARSER-FIX round 3 adjudication。F-IPF-03 #10 acceptance "pm2 logs 1h extraction failed 降幅 > 80%" 隐含 pm2 `log_date_format` 运维配置。Generator 改 ecosystem.config.cjs 风险大（不在代码边界内），Evaluator 验收命中差异只能 BLOCKED。
+
+**规则（写入 `harness/planner.md` §铁律 1.2）：** acceptance 证据来源必须限定在 Generator 代码 + Evaluator 测试可控范围内，不得依赖运维侧（pm2 / cron / GCP / k8s）。优先改为 DB / 应用层产物可量化的等价项；必须依赖运维条件时显式标注前置；遇运维依赖立即 adjudication 而非 BLOCKED。
+
+### 新增 Planner 铁律 1.3：定量 acceptance 零基线边界 + 证据组合满足
+
+来源：BL-IMAGE-PARSER-FIX round 3 adjudication round 2。#10 reverifying 实际 before=0 AND after=0（KOLMatrix 已切替 + 模型冷门），原 acceptance 零基线零除导致 FAIL 但 smoke 7-9 全 PASS 证明修复已生效。
+
+**规则（写入 `harness/planner.md` §铁律 1.3）：** 定量 acceptance（降幅/比值）必须显式处理零基线（`If X is 0, handle edge case by Y`）；允许 qualitative + quantitative 证据组合满足，组合条件需在 acceptance 明示"当且仅当"。
+
+### Generator §测试相关经验：测试 mock 层级
+
+来源：BL-IMAGE-PARSER-FIX fix round 1。F-IPF-02 6 条单测 override `chatCompletions` 直接返回含 images 假响应，绕过 `normalizeChatResponse` 真实剥字段逻辑 —— 单测全绿但生产部署后 100% 失败。
+
+**规则（写入 `harness/generator.md` §测试相关经验）：** Generator 单测涉及"修改响应字段处理逻辑"或"穿透多层转换"的修复时，至少 1 条单测从最外层边界（`global.fetch`）mock，让中间层真实执行，验证字段完整穿透。
+
+### Evaluator 配套：mock 层级 + 运维依赖
+
+写入 `harness/evaluator.md` §4 评分标准：
+- 核对 Generator 单测的 mock 层级，发现"穿透多层转换"类修复在中间层 mock 必须判 PARTIAL 要求补外层 mock 单测
+- 验收时遇到运维依赖型 acceptance 立即触发 mid-impl adjudication 而非 BLOCKED
+
+### 自检 checklist 扩增
+
+`harness/planner.md` §铁律自检规则 新增 2 条 checkbox（铁律 1.2 / 1.3），保持每次新增铁律时同步更新自检项的约定。
+
+---
+
 ## v0.9.3 — 2026-04-20（aigcgateway Path A 3 条回流：铁律 1.1 / 自检规则 / Mid-Impl 裁决 / Next.js 坑）
 
 **来源：** aigcgateway 项目 Path A 11 批次 completeness 沉淀回流。Path A 2026-04-17 启动，2026-04-20 收官，累计解决 Code Review 13 Critical + 40+ High（具体 10 批主线 + 1 插入 BILLING-CHECK-FOLLOWUP），新增 76 条单测（96 → 172），framework 从 v0.7.0 演进到 v0.7.3。

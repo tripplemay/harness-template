@@ -235,6 +235,41 @@ Planner 写 spec，若涉及以下内容，**必须先 Read 对应文件核实**
 
 来源：aigcgateway BL-FE-PERF-01 F-PF-02 i18n 口径偏差（Next.js 对 `import('./*.json')` 编译为 JS chunk 是标准优化，acceptance 锁死 `.json` 形态反而逼迫反最佳实践实现）。
 
+### 铁律 1.2：acceptance 的"证据来源"必须限定在 Generator 代码 + Evaluator 测试可控范围内（2026-04-25 采纳）
+
+Planner 写 acceptance 时，**证据来源必须限定在 Generator 代码 + Evaluator 测试可控范围内**，不得依赖运维侧配置（pm2 `log_date_format` / logrotate / env 注入 / 宿主 cron / GCP console / k8s configmap 等）。
+
+**冲突场景：** 若某个验收项隐含需要运维侧预设（如"pm2 logs 1h 内 extraction failed 降幅 > 80%"隐含需要 pm2 log 带时间戳），Evaluator 验收阶段命中运维差异 → 只能 BLOCKED 或返工，浪费 fix round。
+
+**应对方式：**
+- 优先改为 DB / 应用层产物可量化的等价项（如 `call_logs.createdAt` 毫秒级精度 + 1h 分桶 SQL）
+- 若必须依赖运维条件，明确在 acceptance 中前置标注："运维条件前置：X 需管理员在部署前确保"
+- 遇到运维依赖立即触发 adjudication 而非 BLOCKED 卡死
+
+**反例：** F-IPF-03 #10 "pm2 logs 1h 内 extraction failed 降幅 > 80%" 隐含 pm2 时间戳。Generator 擅动生产 ecosystem.config.cjs 风险大（不在代码边界内）；改 acceptance 为基于 `call_logs` DB 查询（createdAt 精确毫秒级，按 1h 分桶）—— 数据源精准、可复现、不依赖运维。
+
+来源：aigcgateway BL-IMAGE-PARSER-FIX round 3 adjudication。
+
+### 铁律 1.3：定量 acceptance 必须显式处理零基线边界 + 允许证据组合满足（2026-04-25 采纳）
+
+Planner 写 "降幅 / 比值 / 占比 / 相对变化" 类**定量 acceptance** 必须显式处理零基线边界（分母=0、before=0、流量过低等场景）。否则 Evaluator 遇到冷门模型 / 上报者已切替 fallback / 部署时段低流量等场景必然 FAIL（虽然修复本身生效）。
+
+**应对方式：**
+- 定量 acceptance 模板包含 `If X is 0, handle edge case by Y` 的显式子句
+- 允许 qualitative（smoke、功能验证）+ quantitative（降幅、比值）证据**组合满足**，而非孤立比较
+- 组合满足条件需在 acceptance 明示"当且仅当"（避免 Evaluator 自由心证）
+
+**模板（推荐）：**
+```
+acceptance: "(before-after)/before > 0.80
+  OR (before=0 AND after=0 AND smoke 7-9 全 PASS) — 零基线豁免（修复无量可证但功能本身已验证）
+  OR (before=0 AND after>0) — FAIL（修复生效但引入新问题）"
+```
+
+**反例：** BL-IMAGE-PARSER-FIX #10 原 acceptance "降幅 > 80% OR before>0 AND after=0"；reverifying 实际 before=0 AND after=0（KOLMatrix 已切 seedream 停测 + 模型冷门），零基线零除导致 FAIL，但 smoke 7-9 全 PASS 证明修复已生效。修订为三分支后才得以 PASS。
+
+来源：aigcgateway BL-IMAGE-PARSER-FIX round 3 adjudication round 2。
+
 ### 铁律 2：Code Review 报告的事实性断言按"线索"处理，不按"真相"采信
 
 **符号/类型/约束/枚举/常量**类断言**必须双路交叉验证**：
@@ -269,6 +304,8 @@ Planner 写 spec，若涉及以下内容，**必须先 Read 对应文件核实**
 
 - [ ] 铁律 1：涉及代码细节时，已 Read 源码 + file:line 引用？
 - [ ] 铁律 1.1：具体技术形态（文件名/路径/API/网络请求）是否锁死？是否允许等价实现？
+- [ ] 铁律 1.2：证据来源是否限定在 Generator 代码 + Evaluator 测试可控范围？是否存在隐含的运维依赖？
+- [ ] 铁律 1.3：定量 acceptance（降幅/比值）是否显式处理零基线边界？是否允许 qualitative + quantitative 组合满足？
 - [ ] 铁律 2：Code Review 符号/类型/约束断言是否双路交叉验证？
 - [ ] 铁律 2.1：协议返回形式是否标明协议层（HTTP/MCP/WebSocket）？
 
