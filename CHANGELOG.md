@@ -5,6 +5,30 @@
 
 ---
 
+## v0.9.5 — 2026-04-26（aigcgateway BL-IMAGE-PRICING-OR-P2 2 条回流：铁律 1.4 + CLI 脚本退出 close 连接）
+
+**来源：** aigcgateway BL-IMAGE-PRICING-OR-P2（fix_rounds=2，含 mid-impl 裁决一轮）。Planner 在 verifying 阶段调研用户报告的生产 image log 显示问题时附带发现 `model-sync.buildCostPrice` 对 IMAGE modality 硬编码 `{perCall:0}` 强制覆盖；Codex 在 reverifying 阶段遭遇 pricing CLI 脚本 Redis hang。两条经验回流。
+
+**变更内容：**
+
+### 新增 Planner 铁律 1.4：周期性后台任务对数据的覆写必须显式 + 加回归保护
+
+来源：BL-IMAGE-PRICING-OR-P2 mid-impl 裁决。BL-BILLING-AUDIT-EXT-P1 F-BAX-08 spec 未考虑 model-sync 04:00 sync 跑完会把 IMAGE channel.costPrice 全部冲回 0。Codex 验收当下 PASS，但下一轮 sync 后失效。Planner 调研用户报告的伴生 bug 时才发现，触发 mid-impl 裁决。
+
+**规则（写入 `harness/planner.md` §铁律 1.4）：** acceptance 涉及由后台周期任务（sync/cron/scheduler）写入的数据时，必须 (a) 显式声明该数据由 X 任务每 Y 间隔写入；(b) 在 Codex 验收清单中加一项"手动触发任务一次后再核数据"的回归保护项。
+
+**自检 checklist 扩增：** `harness/planner.md` §铁律自检规则 新增第 5 条 checkbox（铁律 1.4），保持每次新增铁律时同步更新自检项的约定。
+
+### Generator §测试相关经验：CLI 脚本退出前必须 close 所有外部连接
+
+来源：BL-IMAGE-PRICING-OR-P2 fix_round 2 Path A #4。pricing CLI 脚本只 `await prisma.$disconnect()` 遗漏了 lazy-initialized Redis client；Codex 在 reverifying 跑 `verify-or-image-channels-2026-04-25.ts` 进程 hang 死，需手动 SIGKILL。
+
+**规则（写入 `harness/generator.md` §测试相关经验）：** 所有 `npx tsx scripts/*.ts` 一次性脚本必须显式 close **所有**长连接（Prisma + Redis + 其他 pool）。模板代码见文件 §测试相关经验小节。
+
+**Evaluator 配套：** 脚本类 acceptance 必须包含"脚本执行后进程在 60s 内自然退出（exit code 0）"以避免 hang 漏检。
+
+---
+
 ## v0.9.4 — 2026-04-25（aigcgateway BL-IMAGE-PARSER-FIX 3 条回流：铁律 1.2/1.3 + 测试 mock 层级）
 
 **来源：** aigcgateway BL-IMAGE-PARSER-FIX 批次 2026-04-21 三条经验沉淀（同一批次先后产生 3 条）。该批次 fix round 1 单测全绿但生产 100% 失败暴露 mock 层级问题；round 3 adjudication 暴露运维依赖型 acceptance + 零基线边界两类规格缺陷。BL-BILLING-AUDIT-EXT-P1 done 后批量回流。

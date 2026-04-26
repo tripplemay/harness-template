@@ -270,6 +270,31 @@ acceptance: "(before-after)/before > 0.80
 
 来源：aigcgateway BL-IMAGE-PARSER-FIX round 3 adjudication round 2。
 
+### 铁律 1.4：周期性后台任务对数据的覆写必须在 acceptance 显式声明 + 加回归保护（2026-04-26 采纳）
+
+Planner 写 acceptance 涉及由**后台周期任务**（sync / cron / scheduler）写入的数据时，必须：
+
+1. **显式声明**：spec 中标注"该数据由 X 后台任务每 Y 间隔写入"
+2. **加回归保护验收项**：在 Codex 验收清单中加一项"手动触发任务一次后再核数据"，验证当前修复在任务跑完后仍持久
+
+否则 Codex 验收当下 PASS，下一轮任务跑完即失效；Planner 自身在调研生产 bug 时才发现回归（用户感受到失效后追溯）。
+
+**反例：** aigcgateway BL-BILLING-AUDIT-EXT-P1 F-BAX-08 spec 未考虑 `model-sync.buildCostPrice` 对 IMAGE channel 硬编码 `{perCall:0}` 强制覆盖。F-BAX-08 acceptance 抽查 5 条 channel costPrice 非零 PASS，但 04:00 model-sync 跑完一次性把所有 image channel.costPrice 全部回 0。Planner 调研用户报告的 image log 显示问题时附带发现，触发 mid-impl 裁决加 F-BIPOR-04 修复 + 验收 #12（手动触发 sync 后再核 costPrice 保持）。
+
+**典型场景：**
+- DB UPDATE / 配置写入 + 同表有 cron / sync / scheduler 任务
+- 缓存数据 + 后台预热 / 定期清理任务
+- 计算字段 + 异步 job 重算
+
+**Acceptance 模板：**
+```
+"X 数据写入由 [model-sync 每 24h] 触发；本批次修复后必须执行回归验证：
+ (a) [trigger model-sync 一次] 后重查 X，断言修复持久；
+ (b) 若 (a) 失败说明覆写源未修，本批次需扩 scope 修源头。"
+```
+
+来源：aigcgateway BL-IMAGE-PRICING-OR-P2 mid-impl 裁决（buildCostPrice 回归）。
+
 ### 铁律 2：Code Review 报告的事实性断言按"线索"处理，不按"真相"采信
 
 **符号/类型/约束/枚举/常量**类断言**必须双路交叉验证**：
@@ -306,6 +331,7 @@ acceptance: "(before-after)/before > 0.80
 - [ ] 铁律 1.1：具体技术形态（文件名/路径/API/网络请求）是否锁死？是否允许等价实现？
 - [ ] 铁律 1.2：证据来源是否限定在 Generator 代码 + Evaluator 测试可控范围？是否存在隐含的运维依赖？
 - [ ] 铁律 1.3：定量 acceptance（降幅/比值）是否显式处理零基线边界？是否允许 qualitative + quantitative 组合满足？
+- [ ] 铁律 1.4：涉及的数据是否会被后台周期任务（sync/cron/scheduler）覆写？是否加了"手动触发任务一次后再核"的回归保护项？
 - [ ] 铁律 2：Code Review 符号/类型/约束断言是否双路交叉验证？
 - [ ] 铁律 2.1：协议返回形式是否标明协议层（HTTP/MCP/WebSocket）？
 

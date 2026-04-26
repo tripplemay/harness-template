@@ -272,3 +272,32 @@ vi.spyOn(global, 'fetch').mockResolvedValue(new Response(JSON.stringify({...})))
 **Evaluator 配套：** Evaluator 在 code review 阶段须核对 Generator 单测的 mock 层级 —— 若发现"穿透多层转换"类修复的单测 mock 在中间层之上，必须要求至少补一条最外层边界 mock 的单测。
 
 来源：aigcgateway BL-IMAGE-PARSER-FIX fix round 1（单测全绿但生产 100% 失败）。
+
+### CLI 脚本退出前必须 close 所有外部连接（2026-04-26 采纳）
+
+**适用场景：** 所有 `npx tsx scripts/*.ts` / `node scripts/*.js` 一次性脚本（pricing / migration / smoke / fetcher）。
+
+**规则：** 脚本主流程结束后，必须显式 close **所有**长连接（Prisma + Redis + 其他 socket / pool），否则 Node.js event loop 仍持有连接句柄，进程不退出 → CI / Codex 验收脚本 hang 不出结果，需手动 SIGKILL。
+
+**反例：** aigcgateway 多个 pricing 脚本只 `await prisma.$disconnect()`，遗漏了 lazy-initialized Redis client。Codex 在 reverifying 阶段执行 `npx tsx scripts/pricing/verify-or-image-channels-2026-04-25.ts` hang 死，触发 Path A fix_round 2 #4。
+
+**正面写法：**
+```ts
+// 1) 在共享层 (e.g., src/lib/redis.ts) 暴露 disconnect helper
+export async function disconnectRedis() {
+  if (redis) await redis.quit();
+}
+
+// 2) 脚本末尾 finally 调用全部 disconnect
+async function main() { /* ... */ }
+const cleanup = async () => {
+  await Promise.allSettled([prisma.$disconnect(), disconnectRedis()]);
+};
+main()
+  .then(async () => { await cleanup(); process.exit(0); })
+  .catch(async (e) => { console.error(e); await cleanup(); process.exit(1); });
+```
+
+**Evaluator 配套：** 脚本类 acceptance 必须包含"脚本执行后进程在 60s 内自然退出（exit code 0）"，避免 hang 漏检。
+
+来源：aigcgateway BL-IMAGE-PRICING-OR-P2 fix_round 2 Path A #4（pricing CLI Redis hang）。
