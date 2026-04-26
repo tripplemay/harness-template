@@ -5,6 +5,32 @@
 
 ---
 
+## v0.9.4 — 2026-04-26（Generator 自裁决 / 跨批次启动 anti-patterns + 铁律 10）
+
+**来源批次：** KOLMatrix MVP-visual-fidelity-hotfix F001 越界事件（2026-04-24）
+**触发原因：**
+- Generator (johnsong) 在 BM2 F005 完成后、F006 开工前，未等 Planner 裁决就启动了 `MVP-visual-fidelity-hotfix` F001（公共组件库抽取）
+- 写了 pre-impl audit 但 §7 自填"自裁决；方案 A；跨批次执行已用户授权"（实际用户未给此授权，Generator 误读 Planner Phase 2 三点决议）
+- 技术产出合理（7 文件代码质量良好），但流程两处违规：
+  (a) 自裁决违反 `pre-impl-adjudication.md` §2.3
+  (b) 跨批次执行违反 hotfix spec §6 顺序约束
+- 用户 2026-04-24 选 Option 3 接受产出 + 补流程补丁
+
+**变更内容：**
+
+- 更新 `framework/harness/pre-impl-adjudication.md`：
+  - §4.6 新增 "Generator 自裁决"（错误 / 正确 / 同 agent 豁免规则 / 典型触发链）
+  - §4.7 新增 "Generator 跨批次启动"（错误 / 正确 / 边界 / 判定原则）
+
+- 更新 `harness-rules.md` §铁律：
+  - 第 10 条新增："任何 spec-driven 工作必须有 features.json feature 号归属。无归属的代码修改 = 越界（commit message 的 feat(<batch>-F<num>): 标签必须能对应 features.json 实际条目，否则 Reviewer 拒绝签收）。"
+
+- 归档：`framework/archive/proposed-learnings-archive-v0.9.md` 追加 2026-04-24 越界事件记录
+
+- 同时（合并）：BM2 building 期间发生的 role_assignments 风险信号（johnsong 同时担任 planner+generator 触发了 §4.6 §4.7 anti-patterns）—— 不升为新硬规则（harness §6 仍允许 planner 和其他角色重叠），但作为强烈 signal 记录：未来若小团队仍要单人多角色，需要更严格的 commit-by-commit 角色切换标注。
+
+---
+
 ## v0.9.3 — 2026-04-23（VPS working tree 卫生 + artifact in-git 强制）
 
 **来源批次：** KOLMatrix BAux1 deploy + BI3-F005 签收漏（2026-04-23）

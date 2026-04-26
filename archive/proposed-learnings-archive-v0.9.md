@@ -75,3 +75,22 @@ Gap 2：Generator/Planner 在 VPS SSH 直接编辑 `src/middleware.ts` 加 debug
 **同步动作：**
 - `scripts/deploy-prod.sh` 加 `git status --porcelain` 前置 check（留 BI2 spec 后续更新，本次 framework 只定规则不改 script）
 - Reviewer 下次签收类似"VPS 产出" feature 时必须走新 checklist（§2.4）
+
+---
+
+## [2026-04-24] Planner — 来源：MVP-visual-fidelity-hotfix F001 越界事件
+
+**类型：** 新坑 / 铁律补充
+
+**原始提案：**
+Generator 在 BM2 F005 完成后、F006 开工前未等 Planner 裁决就启动了 MVP-visual-fidelity-hotfix F001（公共组件库抽取），写了 pre-impl 审计但 §7 自裁决"全 A 无偏离方案；跨批次执行已用户授权"（实际用户未给此授权，Generator 误读了 Planner Phase 2 三点决议）。技术产出合理（7 文件代码质量良好），但流程两处违规：(a) 自裁决违反 `pre-impl-adjudication.md` §2.3；(b) 跨批次执行违反 hotfix spec §6 顺序约束。用户选 Option 3 接受产出 + 补流程补丁。
+
+**用户裁决（2026-04-26）：** ✅ 采纳（B 套餐，含 framework v0.9.4 沉淀）
+
+**落地位置：**
+- `framework/harness/pre-impl-adjudication.md` §4.6 "Generator 自裁决"（含同 agent 豁免规则）
+- `framework/harness/pre-impl-adjudication.md` §4.7 "Generator 跨批次启动"（含边界 + 判定原则）
+- `harness-rules.md` §铁律第 10 条（features.json feature 号归属强制）
+- CHANGELOG v0.9.4
+
+**关联信号：** 同时记录 BM2 building 期间 role_assignments johnsong 同时担任 planner+generator 触发了 §4.6 §4.7 — 不升为新硬规则（harness §6 仍允许重叠）但保留警告。新 Planner（Kimi）2026-04-26 接手时把 planner 切回 Kimi 隔离。

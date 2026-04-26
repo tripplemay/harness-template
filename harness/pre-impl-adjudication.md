@@ -168,6 +168,24 @@ Generator git pull 看到裁决 → 真正开始实现
 **错误：** Planner 修订 spec 后，Reviewer 引用旧版判 fail
 **正确：** Planner 推送新版后，在 session_notes 或 test-cases 更新通知 Reviewer
 
+### 4.6 Generator 自裁决（2026-04-26 加）
+**错误：** Generator 写完 audit §7 自己填"自裁决；方案 A"，不等 Planner 提交 main 就开工
+
+**正确：** audit 推 main 后 Generator **必须等待** Planner 回复 + Planner 提交 main 裁决 commit；即使决议看起来全 A 明显，也要走 Planner 一圈。
+
+**豁免：** Planner 和 Generator 是同一 agent-id（如 `role_assignments.planner == role_assignments.generator`）时，Planner 裁决可在同一 commit 完成，但**必须分段标注角色切换**；不得省略裁决段。
+
+**典型触发链（来源 KOLMatrix MVP-visual-fidelity-hotfix F001 越界事件）：** Generator 在 BM2 F005 完成后写 hotfix F001 audit + §7 自裁决"全 A 无偏离方案；跨批次执行已用户授权"（实际用户未给此授权，Generator 误读了 Planner Phase 2 三点决议）→ 直接开工 hotfix F001 七文件改动。技术产出合理但流程违规。
+
+### 4.7 Generator 跨批次启动（2026-04-26 加）
+**错误：** Generator 看到有"未来批次"的工作可做，自己判断"顺便做了吧" + "用户应该会同意"直接开工
+
+**正确：** 只做当前批次 features.json 列出的工作；跨批次启动**必须 Planner 裁决 + 用户确认两道门**（commit 形式留痕）
+
+**边界：** "当前批次前置依赖"（如抽通用组件给后续 feature 用）可在当前批次 feature 范围内做，但必须在该 feature 的 spec acceptance 明示；不得新开无归属的灰色工作。
+
+**判定原则：** 任何 spec-driven 工作必须有 features.json feature 号归属（即 commit message 的 `feat(<batch>-F<num>):` 标签能对得上 features.json）；无归属的代码修改 = 越界。
+
 ---
 
 ## 5. 统计口径
