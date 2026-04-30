@@ -295,6 +295,47 @@ Planner 写 acceptance 涉及由**后台周期任务**（sync / cron / scheduler
 
 来源：aigcgateway BL-IMAGE-PRICING-OR-P2 mid-impl 裁决（buildCostPrice 回归）。
 
+### 铁律 1.5：枚举/字段扩展必须前置 grep 所有反向消费点（2026-04-30 采纳）
+
+扩展 enum（如 ModelModality 加 EMBEDDING）或类型字段时，必须先全仓 grep 所有现有硬编码分支点（`isImage / type === 'X' / modality === 'X'` 等），将所有命中点纳入本批次 scope，或显式标注为 N/A 风险。
+
+否则：Generator 单测覆盖新 enum 分支本身，但漏掉「反向消费」这些 enum 的代码点 → seed channel ACTIVE 后被其他路径阻断，reverifying 多项全部失败。
+
+**Grep 模板：**
+```bash
+grep -r "isImage\|modality\s*===\s*['\"]TEXT['\"]\|modality\s*===\s*['\"]IMAGE['\"]" src/ --include="*.ts"
+```
+替换为你扩展的 enum 名。
+
+来源：aigcgateway BL-EMBEDDING-MVP，spec 漏定义 `health/checker.ts + scheduler.ts` 的 `isImage` 硬编码点，reverify #4-7/#13 全部被 channel 路由级阻断。
+
+### 铁律 1.6：调研类 spec 假设必须枚举三类根因（2026-04-30 采纳）
+
+调研类 feature（排查 bug 原因 / 数据异常溯源）的假设列表必须覆盖三大类根因：
+
+| 类型 | 描述 | 典型例子 |
+|---|---|---|
+| 数据缺失 | Gateway 没收到上游字段 | 上游 API 不返回 token 统计 |
+| 数据正确但解释错 | 单价/单位/货币错位 | 上游按 per-1M 报价，我方按 per-1k 写入 |
+| 数据正确但消费方式错 | 读了错的字段 / 聚合方式错 | 读了 completion_tokens 却按 input 单价 |
+
+不枚举全三类 → Generator 调研走完第一类无果，第二轮才想到第二类，多消耗一轮 + 真实 API 调用成本。
+
+来源：aigcgateway BL-RECON-FIX-PHASE2 F-RP-01，H1/H2/H3 假设均聚焦「数据缺失」，漏掉「单价错位」根因。
+
+### 铁律 1.7：跨 cron 周期 acceptance 必须标注时序口径（2026-04-30 采纳）
+
+涉及 cron / 上游账单 / 异步 settlement 的 acceptance，spec 写时必须明确标注 T+0 / T+1 / T+N 时序口径。
+
+否则：Generator 和 Evaluator 隐含假设不同，verifying 阶段才被迫向用户申请口径放宽，浪费一轮。
+
+**模板：**
+```
+acceptance: "当日 rerun → rowsWritten > 0（T+0 可验证）；model 行 status=MATCH（T+1 上游 settle 后可验证，E2E 验收接受 T+1）"
+```
+
+来源：aigcgateway BL-RECON-FIX-PHASE2 F-RP-04 tc8，同日 rowsWritten=11 但目标 model 行未出现，根因是上游 OR billing API T+1 出账。
+
 ### 铁律 2：Code Review 报告的事实性断言按"线索"处理，不按"真相"采信
 
 **符号/类型/约束/枚举/常量**类断言**必须双路交叉验证**：
@@ -335,11 +376,36 @@ Planner 写 acceptance 涉及由**后台周期任务**（sync / cron / scheduler
 - [ ] 铁律 2：Code Review 符号/类型/约束断言是否双路交叉验证？
 - [ ] 铁律 2.1：协议返回形式是否标明协议层（HTTP/MCP/WebSocket）？
 
+- [ ] 铁律 1.5：枚举/字段扩展前，是否已全仓 grep 所有反向消费点（isImage/modality/type 硬编码分支）并纳入 scope？
+- [ ] 铁律 1.6：调研类 feature 假设是否覆盖三类根因（数据缺失 / 解释错 / 消费方式错）？
+- [ ] 铁律 1.7：涉及 cron/上游账单/异步 settlement 的 acceptance 是否标注时序口径（T+0/T+1/T+N）？
+- [ ] 铁律 3：acceptance 是否要求 Generator 新建测试文件或新增 case？（不允许，需拆 executor:codex 或标注 mock 扩展例外）
+
 **每条过一遍再 push。**
 
 来源：aigcgateway BL-SEC-POLISH 首轮验收 15 PASS / 2 PARTIAL / 1 FAIL — 其中 FAIL #1 违反铁律 1.1（"<50ms" 死数值），PARTIAL #14 违反铁律 2.1（"HTTP 429" 协议误解）。**铁律 2.1 在立下后 10 天内第二次被同一 Planner 违反**，证明有规则不等于会应用。自检清单应作为 spec push 前的最后一步。
 
 **扩展：** 铁律清单随时间增长，Planner 必须在清单变化时同步更新自检项；CHANGELOG 每次新增铁律时，同步在本小节追加 checkbox 项。
+
+### 铁律 3：Planner 不得在 acceptance 中将测试编写任务塞给 Generator（2026-04-30 采纳）
+
+Planner 写 features.json 的 acceptance 时，**不得把"新建测试文件 / 新增测试 case"列为 Generator 的交付物**。测试编写属于测试域（Codex/evaluator）职责。
+
+**禁止的形式：**
+- `tests/xxx.test.ts 新建 + N cases 全 PASS`
+- `route.test.ts 单测扩展 M 条`
+- `coverage 达 X%`（Generator 靠新建 test file 填充）
+
+**允许的例外（需显式标注）：**
+- 扩展现有 mock 文件中的条目：`[mock 扩展例外：Generator 仅追加 mock 条目，不新建 case]`
+
+**正确处理方式：**
+- 新功能确需单测 → 拆出独立 `executor:codex` 子任务：`"编写 X 模块单测（Codex）"`
+- Generator acceptance 只验证代码正确性：tsc + build + 现有测试无回归
+
+**起源：** BL-RECON-UX-PHASE1 spec 把 `route.test.ts / export.test.ts / classify.test.ts` 新 case 写进 Generator acceptance。Generator 发现 mock 不全必须扩展（踩进测试域），且不写则新功能零覆盖，陷入两难。
+
+来源：aigcgateway BL-RECON-UX-PHASE1 F-RC-01，Planner-Generator 角色边界冲突复盘。
 
 ---
 

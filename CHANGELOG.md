@@ -5,6 +5,28 @@
 
 ---
 
+## v0.9.6 — 2026-04-30（aigcgateway 3 批次 4 条回流：铁律 1.5/1.6/1.7 + 铁律 3）
+
+**来源：** aigcgateway BL-EMBEDDING-MVP / BL-RECON-FIX-PHASE2 / BL-RECON-UX-PHASE1 三个批次的 verifying 阻断点分析。
+
+### 铁律 1.5：枚举/字段扩展必须前置 grep 所有反向消费点
+来源：BL-EMBEDDING-MVP，spec 漏定义 `isImage` 硬编码点，reverify 多项全部被 channel 路由阻断。
+写入：`harness/planner.md` §铁律 1.5 + 自检 checklist
+
+### 铁律 1.6：调研类 spec 假设必须枚举三类根因（数据缺失/解释错/消费方式错）
+来源：BL-RECON-FIX-PHASE2 F-RP-01，漏掉「单价错位」根因，多消耗一轮调研。
+写入：`harness/planner.md` §铁律 1.6 + 自检 checklist
+
+### 铁律 1.7：跨 cron 周期 acceptance 必须标注时序口径（T+0/T+1/T+N）
+来源：BL-RECON-FIX-PHASE2 F-RP-04 tc8，T+1 出账假设未对齐，verifying 被迫放宽口径。
+写入：`harness/planner.md` §铁律 1.7 + 自检 checklist
+
+### 铁律 3：Planner 不得在 acceptance 中将测试编写任务塞给 Generator
+来源：BL-RECON-UX-PHASE1 F-RC-01，spec 把新建测试文件写进 Generator acceptance，导致角色边界冲突两难。
+写入：`harness/planner.md` §铁律 3 + 自检 checklist
+
+---
+
 ## v0.9.5 — 2026-04-26（aigcgateway BL-IMAGE-PRICING-OR-P2 2 条回流：铁律 1.4 + CLI 脚本退出 close 连接）
 
 **来源：** aigcgateway BL-IMAGE-PRICING-OR-P2（fix_rounds=2，含 mid-impl 裁决一轮）。Planner 在 verifying 阶段调研用户报告的生产 image log 显示问题时附带发现 `model-sync.buildCostPrice` 对 IMAGE modality 硬编码 `{perCall:0}` 强制覆盖；Codex 在 reverifying 阶段遭遇 pricing CLI 脚本 Redis hang。两条经验回流。
