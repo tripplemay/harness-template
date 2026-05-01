@@ -5,6 +5,16 @@
 
 ---
 
+## v0.9.7 — 2026-05-01（aigcgateway BL-HEALTH-PROBE-MIN-TOKENS 1 条回流：铁律 1.5 范围细化）
+
+**来源：** aigcgateway BL-HEALTH-PROBE-MIN-TOKENS verifying 阶段 Codex non-blocking 注释 + Planner 自检反思。
+
+### 铁律 1.5 范围细化：grep 不得限定单一子目录
+来源：BL-HEALTH-PROBE-MIN-TOKENS。Planner 写 spec D2 时把"两处硬编码同步改"限定为 `src/lib/health/checker.ts:148 + :394`，未做全仓 grep。Generator 实施后发现 `src/lib/api/post-process.ts:216` 也硬编码同款 `max_tokens: 1` 用作 callLog 审计写入 — 与本批次目标"probe 用 16"产生审计漂移（实际 wire 16，审计写 1）。审计字段不阻断 probe 行为，本批次 done 收尾时补一个 chore commit 修复，并提议本细化条款。
+写入：`harness/planner.md` §铁律 1.5（追加"grep 范围必须是全项目代码"小节 + 模板示例）+ 自检 checklist 强化（明示 src/ + scripts/ + docs/specs/，同义命名展开，必改点表与 in/out scope 理由）。
+
+---
+
 ## v0.9.6 — 2026-04-30（aigcgateway 3 批次 4 条回流：铁律 1.5/1.6/1.7 + 铁律 3）
 
 **来源：** aigcgateway BL-EMBEDDING-MVP / BL-RECON-FIX-PHASE2 / BL-RECON-UX-PHASE1 三个批次的 verifying 阻断点分析。

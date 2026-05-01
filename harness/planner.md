@@ -295,19 +295,36 @@ Planner 写 acceptance 涉及由**后台周期任务**（sync / cron / scheduler
 
 来源：aigcgateway BL-IMAGE-PRICING-OR-P2 mid-impl 裁决（buildCostPrice 回归）。
 
-### 铁律 1.5：枚举/字段扩展必须前置 grep 所有反向消费点（2026-04-30 采纳）
+### 铁律 1.5：枚举/字段扩展必须前置 grep 所有反向消费点（2026-04-30 采纳，2026-05-01 范围细化）
 
 扩展 enum（如 ModelModality 加 EMBEDDING）或类型字段时，必须先全仓 grep 所有现有硬编码分支点（`isImage / type === 'X' / modality === 'X'` 等），将所有命中点纳入本批次 scope，或显式标注为 N/A 风险。
 
 否则：Generator 单测覆盖新 enum 分支本身，但漏掉「反向消费」这些 enum 的代码点 → seed channel ACTIVE 后被其他路径阻断，reverifying 多项全部失败。
 
+**grep 范围必须是全项目代码（2026-05-01 细化）：**
+
+> Planner 写 spec 时不得把 grep 限定到单一子目录（如 `src/lib/health/`）。同款字面量/常量/类型名往往跨模块复用：
+> - 实现层（`src/lib/<module>/`）
+> - 审计层（`src/lib/api/`、`src/app/api/`）
+> - 维护脚本（`scripts/`）
+> - 测试 fixture / docs 示例（`tests/`、`docs/specs/`）
+>
+> spec 的"必改点表"必须列出全仓 grep 的命中清单 + 每个命中是否纳入 scope（含理由）。
+> 同义命名也要扩 grep（如 `max_tokens` / `maxTokens` / `max_output_tokens` / `maxOutputTokens`，body schema vs wire schema）。
+
 **Grep 模板：**
 ```bash
-grep -r "isImage\|modality\s*===\s*['\"]TEXT['\"]\|modality\s*===\s*['\"]IMAGE['\"]" src/ --include="*.ts"
-```
-替换为你扩展的 enum 名。
+# 单关键字（常量值 / 字面量）
+grep -rn "<literal>" src/ scripts/ docs/specs/ --include="*.ts" --include="*.tsx" --include="*.md"
 
-来源：aigcgateway BL-EMBEDDING-MVP，spec 漏定义 `health/checker.ts + scheduler.ts` 的 `isImage` 硬编码点，reverify #4-7/#13 全部被 channel 路由级阻断。
+# 多关键字（同义 / 大小写变体）
+grep -rEn "isImage|modality\s*===\s*['\"](TEXT|IMAGE)['\"]" src/ scripts/ --include="*.ts" --include="*.tsx"
+```
+替换为你扩展的 enum 名 / 字面量。
+
+来源：
+- 原条款（2026-04-30）：aigcgateway BL-EMBEDDING-MVP，spec 漏定义 `health/checker.ts + scheduler.ts` 的 `isImage` 硬编码点，reverify #4-7/#13 全部被 channel 路由级阻断。
+- 范围细化（2026-05-01）：aigcgateway BL-HEALTH-PROBE-MIN-TOKENS，spec D2 把 grep 限到 `src/lib/health/`，命中两处并据此定义 acceptance；但 `src/lib/api/post-process.ts:216` writeProbeCallLog requestParams 也硬编码同款 `max_tokens: 1` 写 audit log。Generator 修完后 wire 发 16 / audit log 仍写 1，纯审计漂移、不影响 probe 行为，但语义上是同一根因，理应同批解决。
 
 ### 铁律 1.6：调研类 spec 假设必须枚举三类根因（2026-04-30 采纳）
 
@@ -376,7 +393,7 @@ acceptance: "当日 rerun → rowsWritten > 0（T+0 可验证）；model 行 sta
 - [ ] 铁律 2：Code Review 符号/类型/约束断言是否双路交叉验证？
 - [ ] 铁律 2.1：协议返回形式是否标明协议层（HTTP/MCP/WebSocket）？
 
-- [ ] 铁律 1.5：枚举/字段扩展前，是否已全仓 grep 所有反向消费点（isImage/modality/type 硬编码分支）并纳入 scope？
+- [ ] 铁律 1.5：枚举/字段扩展前，是否已全仓 grep 所有反向消费点（isImage/modality/type 硬编码分支）并纳入 scope？**grep 必须覆盖 src/ + scripts/ + docs/specs/，未限定单一子目录**；同义命名（snake/camel/wire vs body schema）也已展开。spec 的"必改点表"已列命中清单 + 每条 in/out scope 理由。
 - [ ] 铁律 1.6：调研类 feature 假设是否覆盖三类根因（数据缺失 / 解释错 / 消费方式错）？
 - [ ] 铁律 1.7：涉及 cron/上游账单/异步 settlement 的 acceptance 是否标注时序口径（T+0/T+1/T+N）？
 - [ ] 铁律 3：acceptance 是否要求 Generator 新建测试文件或新增 case？（不允许，需拆 executor:codex 或标注 mock 扩展例外）
