@@ -340,6 +340,26 @@ grep -rEn "isImage|modality\s*===\s*['\"](TEXT|IMAGE)['\"]" src/ scripts/ --incl
 
 来源：aigcgateway BL-RECON-FIX-PHASE2 F-RP-01，H1/H2/H3 假设均聚焦「数据缺失」，漏掉「单价错位」根因。
 
+### 铁律 1.8：复用现有 UI 组件时 acceptance 不得超出组件实际能力（2026-05-01 采纳）
+
+spec 编写时若 acceptance 引用"复用 `src/components/<X>` 组件"或类似既有组件，**必须先 Read/grep 该组件的 props 列表 + 渲染分支**，acceptance 仅可描述组件真实暴露的功能。如果业务确实需要组件不具备的功能（如 pageSize 切换 / 拖拽 handle / 自定义子项），spec 必须**显式区分**：
+
+- (a) 复用组件原能力 — 列入 F-XXX-01 的 acceptance
+- (b) 扩展组件加新功能 — 拆为独立 feature F-XXX-NN，acceptance 写明 props 扩展点 + 单测
+- 不得把 (b) 隐式塞进 acceptance 描述里，让 Generator 自行决定改组件还是改设计稿
+
+否则：Generator 上轮按字面 acceptance 实施（如在设计稿加 selector），Codex 验收时识别为"设计稿与真实 UI 不一致" → FAIL → fix-round。本质是 Planner 的 spec scope 错误，不该由 Generator 承担。
+
+**自检操作（spec push 前）：**
+
+```bash
+# 列出 acceptance 引用的所有组件
+grep -E "src/components/.*\.tsx" docs/specs/<batch>-spec.md
+# 对每个组件，Read 其 props interface，逐项 cross-check acceptance 描述
+```
+
+来源：aigcgateway BL-ADMIN-ALIAS-UX-PHASE1 F-AAU-09，acceptance 字面写"含 pageSize 选择器（20/50/100）"，但已复用的 `src/components/pagination.tsx` 不渲染 pageSize 切换 UI（pageSize 是页面常量）。Generator 在设计稿加了 selector，Codex 验收 FAIL → fix-round-1 删 selector 对齐组件。
+
 ### 铁律 1.7：跨 cron 周期 acceptance 必须标注时序口径（2026-04-30 采纳）
 
 涉及 cron / 上游账单 / 异步 settlement 的 acceptance，spec 写时必须明确标注 T+0 / T+1 / T+N 时序口径。
@@ -396,6 +416,7 @@ acceptance: "当日 rerun → rowsWritten > 0（T+0 可验证）；model 行 sta
 - [ ] 铁律 1.5：枚举/字段扩展前，是否已全仓 grep 所有反向消费点（isImage/modality/type 硬编码分支）并纳入 scope？**grep 必须覆盖 src/ + scripts/ + docs/specs/，未限定单一子目录**；同义命名（snake/camel/wire vs body schema）也已展开。spec 的"必改点表"已列命中清单 + 每条 in/out scope 理由。
 - [ ] 铁律 1.6：调研类 feature 假设是否覆盖三类根因（数据缺失 / 解释错 / 消费方式错）？
 - [ ] 铁律 1.7：涉及 cron/上游账单/异步 settlement 的 acceptance 是否标注时序口径（T+0/T+1/T+N）？
+- [ ] 铁律 1.8：acceptance 引用的复用 UI 组件，是否已 Read 其 props interface 并 cross-check 描述？描述的功能均在组件实际渲染分支内，未隐式要求扩展组件？
 - [ ] 铁律 3：acceptance 是否要求 Generator 新建测试文件或新增 case？（不允许，需拆 executor:codex 或标注 mock 扩展例外）
 
 **每条过一遍再 push。**

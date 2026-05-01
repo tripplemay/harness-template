@@ -5,6 +5,20 @@
 
 ---
 
+## v0.9.8 — 2026-05-01（aigcgateway BL-ADMIN-ALIAS-UX-PHASE1 2 条回流：Generator manual 任务归属 + Planner 铁律 1.8 复用组件能力核查）
+
+**来源：** aigcgateway BL-ADMIN-ALIAS-UX-PHASE1 verifying FAIL + fix-round-1 双重根因分析。
+
+### Generator 行为补充：Manual 任务归属
+来源：BL-ADMIN-ALIAS-UX-PHASE1 F-AAU-09 fix-round-1。Generator 上轮把 design-draft 截图任务在 session_notes 里单方面写"留 Codex 在 verifying 阶段补"，Codex 验收时识别为未完成 → 阻断 + 强制 fix-round-1。session_notes 不构成跨角色任务转移凭证；spec 默认 Generator 手动 = Generator 必须完成。无法独立完成时应：(a) 优先用项目已有 playwright/dev-server 自动化代替；(b) 主动请求用户协助；(c) 在 features.json 显式标注遗留并取得用户确认。Codex 已产出可复用产物时（如 _artifacts/ 下的截图），Generator 直接 cp 复用是合理的 fix-round 策略。
+写入：`harness/generator.md` §4.1 "Manual 任务归属（2026-05-01 采纳）" 小节，含禁止做法清单 + 应对策略。
+
+### Planner 铁律 1.8：复用现有 UI 组件时 acceptance 不得超出组件实际能力
+来源：BL-ADMIN-ALIAS-UX-PHASE1 F-AAU-09 acceptance 字面要求"含 pageSize 选择器（20/50/100）"，但已复用的 `src/components/pagination.tsx` 不渲染 pageSize 切换 UI。Generator 上轮按 spec 字面要求在设计稿加了 selector，Codex 验收时识别为"设计稿与真实 UI 不一致" → FAIL → fix-round-1。这本质是 Planner 的 spec scope 错误（描述了组件不具备的能力），不该由 Generator 承担。spec 编写时引用复用组件必须先 Read/grep 组件 props 与渲染分支，acceptance 仅可描述真实暴露的功能；业务需要新功能时必须拆为独立 feature 并显式 acceptance（含 props 扩展点 + 单测）。
+写入：`harness/planner.md` §铁律 1.8 + 自检 checklist 增补 1 项。
+
+---
+
 ## v0.9.7 — 2026-05-01（aigcgateway BL-HEALTH-PROBE-MIN-TOKENS 1 条回流：铁律 1.5 范围细化）
 
 **来源：** aigcgateway BL-HEALTH-PROBE-MIN-TOKENS verifying 阶段 Codex non-blocking 注释 + Planner 自检反思。

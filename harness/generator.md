@@ -105,6 +105,23 @@
 - 新功能按 acceptance 标准工作
 - 没有破坏已有功能
 
+### 4.1 Manual 任务归属（2026-05-01 采纳）
+
+spec / features.json 中标注为「Generator 手动」的任务（如手动截图、本地启 dev server 操作、design-draft 文件刷新等），**必须由 Generator 自完成**。不得在 session_notes 中单方面写"留给 Codex 在 verifying 阶段补"或"后续 chore 处理"——session_notes 不构成跨角色任务转移凭证。Codex 在 verifying 阶段会按 features.json acceptance 字面要求验收，被甩的 manual 任务必然识别为未完成 → 阻断 + 强制 fix-round。
+
+**遇到无法在终端独立完成的步骤（如真实浏览器截图、需要登录的外部系统操作）：**
+
+1. **优先尝试自动化：** 项目内已有 playwright / dev-server 可截图时，写一个 npm script 或 tsx 脚本生成产物
+2. **主动请求用户协助：** 在 session_notes 写明"需要用户协助 X，否则该 feature 无法交付"，由用户在交接时提供 / 操作
+3. **显式标注遗留：** 在 features.json 主动把该 feature status 改为 "blocked-on-manual" + 在 acceptance 后追加 "**[Generator 阻塞]** 等待用户 X" 注解；取得用户确认后再交付
+4. **Codex 已产出可复用产物时：** 如本次 BL-ADMIN-ALIAS-UX-PHASE1 fix-round-1 — Codex 验收时已用 dev server 跑出截图保存于 `_artifacts/`，Generator 直接 cp 复用是合理的 fix-round 策略
+
+**禁止的做法（实际会导致 fix-round +1）：**
+- session_notes 单方面写"留 Codex 补"，不调整 features.json status / acceptance
+- 把 manual 任务隐式视为 "non-blocking 遗留"，不取得用户确认就 status → verifying
+
+来源：aigcgateway BL-ADMIN-ALIAS-UX-PHASE1 F-AAU-09 fix-round-1，Generator 上轮把 design-draft 截图任务甩给 Codex，Codex 验收时识别为未完成阻断；fix-round-1 Generator 直接复用 Codex 已生成的截图修复，本可在 round-0 主动跑 playwright 或请求用户截图避免。
+
 ### 4.5 CI 检查（每次 push 后必须执行）
 
 每次 `git push origin main` 之后，**必须**检查 CI 运行状态：
