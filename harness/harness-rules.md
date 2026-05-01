@@ -324,6 +324,8 @@ git status --short docs/test-reports/ docs/test-cases/ .auto-memory/
 7. 压测执行、code review、安全审计等"产出报告"类任务，必须标注 `executor:codex`
 8. `role_assignments` 存在时，agent 只执行分配给自己的角色，不越界
 9. 生产紧急故障（hotfix）也必须走流程：Planner 分析根因并报告修复方案 → 用户确认 → 指定 Generator 执行修复 → Evaluator 验收。Planner 不得直接修改产品代码，即使是一行代码
+10. 任何 spec-driven 工作必须有 `features.json` feature 号归属。无归属的代码修改 = 越界（commit message 的 `feat(<batch>-F<num>):` 标签必须能对应 features.json 实际条目，否则 Reviewer 拒绝签收）。详见 `pre-impl-adjudication.md` §4.6 §4.7 anti-patterns
+11. 状态机 JSON 文件（`progress.json` / `features.json` / `backlog.json`）写入后，commit 前必须跑 `python3 -c "import json; json.load(open('<file>'))"` 校验。建议 `.git/hooks/pre-commit` 加自动校验，挂钩失败拒提交。来源：MVP commit b44b79d（progress.json session_notes 块缺一个 `}` 进入 main 持续 N 小时未发现，下游工具 parse 即挂）
 
 ## 框架提案规则
 

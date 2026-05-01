@@ -122,9 +122,64 @@ Prisma migration 一旦 `migrate deploy` 成功，记录进 `_prisma_migrations`
 
 ---
 
+## 3. Prisma 7+ JSON 列写入需 `as Prisma.InputJsonValue` cast（或函数返回类型收紧）
+
+### 3.1 坑
+
+KOLMatrix B5 F004 / F006 同坑（commits 3349a9a + 类似）：
+
+```typescript
+// recent-videos.ts:140
+await tx.kol.update({
+  where: { id: opts.kolId },
+  data: { metadata: mergeMetadata(opts.metadata, next) },
+  //              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  //              TS2322: Type 'Record<string, unknown>' is not assignable
+  //              to type 'InputJsonValue | NullableJsonNullValueInput | undefined'
+});
+```
+
+`mergeMetadata()` 返回 `Record<string, unknown>`，Prisma 7 的 `Json` 列输入是 `InputJsonValue` 联合类型（不接受 `unknown` 类内的任意 shape）。
+
+### 3.2 正解
+
+**优先：函数返回类型收紧到 `Prisma.InputJsonValue`** —— 一处改、调用点全部受益：
+
+```typescript
+import type { Prisma } from "@prisma/client";
+
+export function mergeMetadata(
+  existing: Prisma.JsonValue | null,
+  patch: Record<string, unknown>
+): Prisma.InputJsonValue {
+  // ... merge logic
+  return merged as Prisma.InputJsonValue;
+}
+```
+
+**次选：调用点 cast** —— 如果 `mergeMetadata` 是公共 util 不能改返回类型：
+
+```typescript
+data: { metadata: mergeMetadata(opts.metadata, next) as Prisma.InputJsonValue }
+```
+
+### 3.3 Spec / Generator checklist
+
+任何 lib 函数返回 → Prisma JSON 列写入 → spec § acceptance 必含：
+
+- [ ] 返回类型是 `Prisma.InputJsonValue` 或显式 cast
+- [ ] CI typecheck 全绿（不能依赖 `// @ts-ignore` 抑制）
+
+CI 容易漏掉这一条因为 `chore(state)` paths-ignore 跳过 typecheck。Generator 推 product code commit 时**必须验证 typecheck 实跑通**（不要靠后续 chore commit 推时再 retrigger）。
+
+来源：KOLMatrix B5-F004 (commit 0dd1697 latent / 3349a9a fix) + B5-F006 (commit 3349a9a)。
+
+---
+
 ## 版本历史
 
 | 日期 | 修订 | 来源 |
 |---|---|---|
 | 2026-04-20 | 初版沉淀（§1 RLS NULLIF） | KOLMatrix BI1-F008 |
 | 2026-04-20 | §2 DB 命名 / 角色 / Grant 与 migration 一致性 | KOLMatrix BI2 DB 命名坑 |
+| 2026-05-01 | §3 Prisma 7+ JSON 列写入需 InputJsonValue cast | KOLMatrix B5-F004/F006 同坑 |

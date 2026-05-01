@@ -182,3 +182,46 @@ gh run list --limit 3 --branch main
 ## 完成标准
 - **building 模式：** 所有 `executor:generator` 的功能 status 均为 "completed"（`executor:codex` 功能保持 pending，由 Codex 处理）→ 将 progress.json status 改为 "verifying"
 - **fixing 模式：** 所有被标为 FAIL/PARTIAL 的 `executor:generator` 功能已修复 → 将 progress.json status 改为 "reverifying"，fix_rounds +1
+
+---
+
+## 8. Alpha / Beta / RC 依赖必须 ambient `.d.ts` shim 兜底
+
+**背景：** KOLMatrix B5 fixing-1（commit f8fca4b）暴露：
+
+- F006 引入 `@visx/wordcloud@4.0.1-alpha.0`（唯一支持 React 19 peerDeps 的版本）
+- CI run typecheck 全绿（首次 npm install 时 .d.ts 正常解析）
+- Reviewer 本地 typecheck FAIL：`Cannot find module '@visx/wordcloud'` + `Parameter 'd' implicitly has an 'any' type`
+- 根因：alpha tag 在 npm install / npm ci 跨循环 .d.ts resolve 不稳定（不同 Node / npm 版本可能解到不同 .d.ts 文件，甚至 0 个）
+
+**规律：** 任何 `alpha` / `beta` / `rc` / `next` / `experimental` tag 依赖**必须同时建 ambient shim**：
+
+```typescript
+// src/types/<package>.d.ts
+declare module "<package>" {
+  // 镜像 upstream 公共 surface
+  export type BaseDatum<T = unknown> = T;
+  export interface CloudWord { /* ... */ }
+  export interface WordcloudProps<T> { /* ... */ }
+  export const Wordcloud: <T extends BaseDatum>(props: WordcloudProps<T>) => JSX.Element;
+}
+```
+
+upstream types 加载时本地 shim 是 no-op override（runtime 不动）；upstream types 漂移 / 没解到时 shim 兜底。
+
+**Spec 起草 checklist（Planner）：** 任何引入 alpha/beta/rc tag 依赖的 spec § dependencies 段必须 explicit 列出：
+
+- [ ] 依赖名 + 精确版本号（含 alpha tag 后缀）
+- [ ] **要求 Generator 同步建 `src/types/<package>.d.ts` ambient shim**
+- [ ] shim 文件路径写入 spec acceptance（验收 = shim 文件存在 + npm ci 后 typecheck 全绿）
+
+**Generator 实战：** 显式 param type annotation 是 belt-and-suspenders 兜底，比依赖泛型推断稳：
+
+```typescript
+// 显式 type annotation（即便 generic 推断应该够，alpha .d.ts 不可信时双保险）
+fontSize={(d: WordcloudDatum) => d.value}
+{(cloudWords: CloudWord[]) =>
+  cloudWords.map((w: CloudWord, i: number) => ...)}
+```
+
+来源：KOLMatrix B5 fixing-1（commit f8fca4b）。

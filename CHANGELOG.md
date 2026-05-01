@@ -5,6 +5,56 @@
 
 ---
 
+## v0.9.5 — 2026-05-01（B5 7 轮 fixing + MVP 3 轮 fixing 累积经验沉淀，12 条 learnings）
+
+**来源批次：** KOLMatrix B5-kol-data-enrichment（2026-04-30）+ MVP-internal-demo-prep（2026-05-01）
+
+**触发原因：**
+- B5 因 deploy runbook 漏跑 + AI action 契约漂移 + alpha tag types 漂移 + visual baseline retrigger 等连续 7 轮 fixing
+- MVP-internal-demo-prep 又踩 PM2 env_file / aigcgateway variables contract / smoke checklist stale 等 3 轮 fixing
+- 用户 2026-05-01 决议：12 条全部入 framework
+
+**变更：**
+- 修改 `framework/harness/deploy-patterns.md`：
+  - §1.6 新增 `PM2 6.0.14 env_file 不可靠 anti-pattern`（必须 delete + sourced-shell start，不要 reload --update-env）
+  - §3 新增 `Staging/Prod deploy 完整链 checklist`（schema migrate / 数据 enrich / SHA 对齐 / chore-only diff 边界）
+  - §4 新增 `Visual baseline regen 注意事项`（GITHUB_TOKEN push 不触发下游 + retrigger 套路 + deterministic selector 要求）
+- **新增** `framework/harness/ai-action-contract.md`（aigcgateway / LLM 网关集成规范）：
+  - §1 Action 集成开工前必跑 dry-run + parser 双 shape 兼容
+  - §2 Timeout 起步 10s + CJK 内容 15s + fallback 不可 silent + 月预算监控
+- 修改 `framework/harness/evaluator.md`：
+  - §10 新增 `SHA 对齐严收紧的边界（chore-only 差异容许）`
+  - §11 新增 `Smoke checklist 文本陈旧时直接 update 而非标 FAIL`
+- 修改 `framework/harness/planner.md`：
+  - 新增 `Spec 起草必含「数据准备步骤」+ 白名单 ID`
+  - 新增 `verifying 前 checklist 起草必须 grep 实际代码验证`
+- 修改 `framework/harness/pre-impl-adjudication.md` §9.2：spec 必含数据准备步骤 + 白名单 ID 防抽样污染
+- 修改 `framework/harness/generator.md` §8：Alpha/Beta/RC 依赖必须 ambient `.d.ts` shim 兜底
+- 修改 `framework/harness/database-patterns.md` §3：Prisma 7+ JSON 列写入需 `as Prisma.InputJsonValue` cast
+- 修改 `framework/harness/harness-rules.md` 铁律：
+  - 第 10 条：spec-driven 工作必须有 features.json feature 号归属（v0.9.4 sync gap 补齐）
+  - 第 11 条新增：状态机 JSON 文件 commit 前必须跑 JSON parse 校验
+- 同步修改 live `harness-rules.md`：第 11 条铁律
+- **新增** `framework/templates/pre-commit-hook.sh`：自动 parse 校验状态机 JSON 文件的 git pre-commit hook 模板
+- 归档 12 条 proposed-learnings → `framework/archive/proposed-learnings-archive-v0.9.5.md`
+- 清空 `framework/proposed-learnings.md` 回 template
+
+**12 条 learnings 列表：**
+- [#1] staging deploy runbook 必含 prisma migrate deploy（B5 fixing-2）
+- [#2] staging deploy runbook 必含数据 enrich/seed 跑动（B5 fixing-3 + MVP fixing-2）
+- [#3] PM2 6.0.14 env_file 不可靠 → delete + sourced-shell start（B5 fixing-4）
+- [#4] aigcgateway action output shape + variables 契约会漂移（B5 fixing-5 + MVP fixing-3）
+- [#5] aigcgateway timeout ≥10s + CJK 15s + fallback 不可 silent（B5 fixing-6）
+- [#6] chore(state) commits 不触发 staging deploy + Reviewer SHA 严收紧死循环（B5 fixing-7 + MVP fixing-2）
+- [#7] Spec 必含「数据准备步骤」+ 白名单 ID（B5 fixing-3 + MVP fixing-2）
+- [#8] Alpha tag 依赖 types 漂移 → ambient `.d.ts` shim 兜底（B5 fixing-1）
+- [#9] Prisma 7+ JSON 列写入需 `as Prisma.InputJsonValue` cast（B5-F004/F006）
+- [#10] update-visual-baselines GITHUB_TOKEN push 不触发下游 CI（B5-F006）
+- [#11] 状态机 JSON 文件 commit 前必须 parse 校验 + pre-commit hook（MVP commit b44b79d）
+- [#12] Smoke checklist 起草后 Planner 必须 grep 验证 elements 存在性（MVP fixing-1）
+
+---
+
 ## v0.9.4 — 2026-04-26（Generator 自裁决 / 跨批次启动 anti-patterns + 铁律 10）
 
 **来源批次：** KOLMatrix MVP-visual-fidelity-hotfix F001 越界事件（2026-04-24）

@@ -256,3 +256,63 @@ Planner 写 spec，若涉及以下内容，**必须先 Read 对应文件核实**
 
 ### 4. 询问下一批次
 记忆更新完成后，告知用户本批次已归档，询问是否开始下一批次。
+
+---
+
+## Spec 起草必含「数据准备步骤」+ 白名单 ID
+
+**背景：** KOLMatrix B5 fixing-3 + MVP-internal-demo-prep fixing-2 暴露：
+
+- B5 fixing-3：staging 96% youtube KOL 缺 `metadata.youtube.channelId` 是 BL-012 crawler hand-off seed 不完整造成的污染池；Reviewer 5/5 抽样全踩进污染池 → FAIL 在 spec 没覆盖的地方
+- MVP fixing-2：seed 写了 5 个 Product 但 KolCampaign rows / KOL.email 字段全空 → C-10 outreach 无法 end-to-end 跑通
+
+Spec 起草时不能假设「seed 数据 = 测试可用」。
+
+**Spec 必含段落：**
+
+```markdown
+## 数据准备步骤（Reviewer 验收前提）
+
+### Tenant / 数据集要求
+- staging tenant 必须满足以下数据条件：
+  - (a) ≥ X 条 fully-enriched <entity>（具体字段：A=非空 / B=非空 / C 长度≥1）
+  - (b) ≥ Y 个满足以下组合的 Campaign：productId NOT NULL AND ≥1 KolCampaign whose KOL has email
+  - (c) ...
+
+### 抽样白名单（Planner 提供给 Reviewer）
+- 以下 ID 已通过本批次 enrich/seed，Reviewer 可直接抽样验收：
+  - <UUID-1> (描述 + 关键字段值快照)
+  - <UUID-2> ...
+- 这是「正样本池」，避免 Reviewer 抽到不完整种子数据误判 FAIL
+```
+
+Planner 必须在 spec lock 之前**实际跑过 staging 数据填充脚本**，记录抽样 ID 到 spec。光列脚本名不够（脚本可能因输入键缺失静默跳过部分行）。
+
+来源：B5 fixing-3 + MVP fixing-2。
+
+---
+
+## verifying 前 checklist 起草必须 grep 实际代码验证
+
+**背景：** Planner 起草 prod L2 smoke checklist 时，UI 元素描述（"X 卡可见" / "Y 按钮存在"）必须基于**实际代码当前状态**，不可凭 spec 文本写。Spec 在 building 期间常常演化，文本与代码漂移。
+
+KOLMatrix MVP-internal-demo-prep fixing-1（C-03 /database 三卡）案例：
+
+- Spec 写：三卡名 "Market Intel / Campaign Timing / Budget Benchmark"
+- 代码 InsightsPanel 实际：三卡名 "AI Intelligence / Coverage Gap / Engagement"
+- Reviewer 按 stale checklist 标 C-03 FAIL
+- Generator 接 fixing 后发现是 checklist 文本陈旧，浪费 1 轮 fixing 切换
+
+**起草 checklist 时 Planner 必须：**
+
+1. 对每条 UI element 描述 `grep` 实际代码 / 跑实际页面验证：
+   ```bash
+   # 例：验证三卡名
+   grep -rE 'AI Intelligence|Market Intel|Coverage Gap|Campaign Timing' src/features/database/
+   ```
+2. 描述与代码不一致 → 立刻在 checklist 写实际命名（不要写 spec 文本）
+3. 元素增删（spec 列 N 个但代码 N+1）→ 在 checklist 注「实际有 N+1 个，验证 N 个核心，多出的不算 FAIL」
+
+**Generator 配套防御（建议）：** PR description 写「本批次 UI 改动元素列表：X / Y / Z（代码实际命名）」，Planner 起草 checklist 时直接复用。
+
+来源：MVP-internal-demo-prep fixing-1。配套见 `evaluator.md` §11「Smoke checklist 文本陈旧时直接 update 而非标 FAIL」。

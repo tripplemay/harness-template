@@ -274,6 +274,26 @@ B0 sprint 实测：
 
 这 5 条任一项没过，说明 Planner 还没准备好定稿——返回审阅。
 
+### 9.2 spec 必含「数据准备步骤」+ 白名单 ID（防抽样污染）
+
+**触发场景：** spec 含 schema 列扩展 / 数据回填脚本 / 涉及 staging tenant 已有数据完整性的 acceptance。
+
+**Planner 在 spec lock 前必须：**
+
+- [ ] 实际跑一次 staging 数据填充脚本（不只是 review 脚本本身）
+- [ ] 查询统计 staging tenant 数据完整性：满足验收前提的行数 / 总行数 比例
+- [ ] 抽样 5-10 个白名单 ID（确认每条都满足 acceptance 全部前置条件）
+- [ ] spec § "数据准备步骤" 写入：
+  - tenant 数据完整度要求（≥ X 条满足条件 A+B+C）
+  - 白名单 ID 列表 + 每条的关键字段值快照
+  - 配套：脚本依赖输入键（如 `metadata.youtube.channelId`）的可用性检查
+
+**不写白名单 = Reviewer 抽样可能踩到污染池：** B5 fixing-3 暴露 staging 96% youtube KOL 缺 `metadata.youtube.channelId`（BL-012 crawler hand-off seed 不完整），enrich 脚本永远不会写入这部分；Reviewer 5/5 抽样全在污染池里 → FAIL。
+
+**MVP fixing-2 同类坑：** seed 列了 5 个 Product 但 KolCampaign rows / KOL.email 全空 → C-10 outreach 抽到任意 campaign 都不可用。
+
+来源：B5 fixing-3（commit 3066551）+ MVP-internal-demo-prep fixing-2（commit 8cd80f2）。
+
 ---
 
 ## 10. 版本历史
@@ -282,3 +302,4 @@ B0 sprint 实测：
 |---|---|---|
 | 2026-04-19 | 初版沉淀 | KOLMatrix B0 sprint 实测 |
 | 2026-04-20 | §9.1 Planner 写 spec 自检清单 | KOLMatrix BI1-F010 acceptance 偏离案例 |
+| 2026-05-01 | §9.2 数据准备步骤 + 白名单 ID 防抽样污染 | KOLMatrix B5 fixing-3 + MVP fixing-2 |

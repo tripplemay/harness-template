@@ -167,3 +167,46 @@
 ## 完成标准
 - 有问题：status 置为 `fixing`，FAIL/PARTIAL 功能改回 pending
 - 全部 PASS：signoff 报告已写入 `docs/test-reports/`，docs.signoff 已填写，status 置为 `done`
+
+---
+
+## 10. SHA 对齐严收紧的边界（chore-only 差异容许）
+
+**背景：** `chore(state)` / `chore(planner)` / `test(...)` 等 commits 仅改状态机 / 测试 / 文档文件，paths-ignore 配置使其不触发 staging/prod deploy。但严格按 "staging /api/health.git_sha = HEAD" 验收会卡死循环（Reviewer 标 FAIL → Generator 触发 chore commit 同步状态 → SHA 又 mismatch → 又 FAIL...）。
+
+**容许规则：** 当 `staging git_sha` 与 `main HEAD` 不一致时，Reviewer 必须先比对中间 commits 是否**全部** match paths-ignore 配置：
+
+```bash
+# 比对 staging SHA → HEAD 之间所有 commit 的改动文件
+git diff --name-only <staging-sha>..HEAD
+
+# 检查这些路径是否全在 paths-ignore 范围内（典型：progress.json / .auto-memory/ / docs/ / .github/ ）
+```
+
+如果**全部命中 paths-ignore**，则 SHA mismatch 不算 blocker，签收时在 signoff 注：
+
+> "staging git_sha=<X> ≠ HEAD=<Y>，diff 仅含 paths-ignore matched 的状态机/测试/文档文件，等价部署，不阻断签收。"
+
+如果有**任何一条** product code 改动（`src/` / `prisma/` / `scripts/` 等），SHA mismatch 必须切 fixing 让 Generator 跑 staging redeploy 同步 SHA。
+
+**配套：** Planner 在 verifying 切换前应主动同步 staging SHA（详见 `deploy-patterns.md` §3.4）—— Reviewer 是兜底而非唯一防线。
+
+来源：KOLMatrix B5 fixing-7（reverifying-6 SHA mismatch 死循环风险）。
+
+---
+
+## 11. Smoke checklist 文本陈旧时直接 update 而非标 FAIL
+
+**背景：** Planner 起草 prod L2 smoke checklist 时，每条 UI 元素描述（"X 卡可见" / "Y 按钮存在"）有时基于 spec 文本而非实际代码。Spec 演化中文本可能与代码漂移。
+
+**Reviewer 处理规则：**
+
+| 情境 | 处理 |
+|---|---|
+| Checklist 描述 element A，代码实际是 element A'（功能等价、命名漂移） | **直接修正 checklist 文本**，标 PASS。在 signoff 备注「checklist 文本 update：A → A' （命名实际是 X 而非 Y）」|
+| Checklist 描述 element A，代码完全无该元素 / 功能 | 标 **FAIL**，按 acceptance 走 fixing |
+| Checklist 描述 N 个元素，代码有 N+1 个（多出一个） | 不算 FAIL，但 signoff 注「实际多出元素 Z，建议下次更新 checklist」|
+
+来源：KOLMatrix MVP-internal-demo-prep fixing-1（C-03 /database 三卡名 spec 写 "Market Intel/Campaign Timing/Budget Benchmark" 但实际代码是 "AI Intelligence/Coverage Gap/Engagement"）。Reviewer 标 FAIL 触发 fixing 浪费 1 轮；正解是直接 update checklist 文本。
+
+**Planner 配套防御：** verifying 前 grep 实际代码验证 checklist 元素存在性（详见 `planner.md` "verifying 前 checklist 起草"）。
