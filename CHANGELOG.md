@@ -5,6 +5,16 @@
 
 ---
 
+## v0.9.10 — 2026-05-02（aigcgateway BL-SYNC-INTEGRITY-PHASE2 1 条回流：Planner 铁律 1 细化 — jsonb 字段空判定三态枚举）
+
+**来源：** aigcgateway BL-SYNC-INTEGRITY-PHASE2 F-SI2-02 fix-round-1。
+
+### Planner 铁律 1 细化：jsonb / json 字段空判定必须枚举所有可能存储 shape
+来源：BL-SYNC-INTEGRITY-PHASE2 F-SI2-02 acceptance 给的 `(sellPrice IS NULL OR sellPrice::text = '{}')` 漏了 JSON null 分支（jsonb null 的 `::text` 是 `'null'`，不在二者之中）；Codex 注入 `sellPrice: null` fixture 触发 unpricedActiveAliases 计数错配 → FAIL → fix-round-1。这是 Planner 在数据形态层面的"反向消费点漏掉"——与铁律 1.5（grep 全仓）+ v0.9.9 内部命名 grep 同源思路，但更精确：是数据形态层面的枚举漏。Generator 修复时抽 `src/lib/sql/alias-status.ts` 共享 SQL 谓词，让 sync-status / scan / `/v1/models` 三处共用，是范式优秀的代偿。
+写入：`harness/planner.md` §铁律 1 末尾追加"jsonb 字段空判定三态枚举（2026-05-02 细化）"小节，含四态判定表（SQL NULL / JSON null / 空对象 / 空数组）+ SQL 模板 + 抽 SQL helper 推荐；自检 checklist 铁律 1 项追加 "jsonb / json 字段的空判定 SQL 已枚举所有可能 shape"。
+
+---
+
 ## v0.9.9 — 2026-05-02（aigcgateway BL-SYNC-INTEGRITY-PHASE1 1 条回流：Planner 铁律 1 细化 — 内部命名 grep 确认）
 
 **来源：** aigcgateway BL-SYNC-INTEGRITY-PHASE1 F-SI-02 acceptance #5 引用不存在函数。

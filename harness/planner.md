@@ -227,7 +227,30 @@ grep -rEn "(syncSingleProvider|/api/admin/<endpoint>|scripts/<script>)" src/ scr
 
 **Generator 发现规格偏差时**：开工前提出"规格偏差报告"暂停；Planner 修订 spec 后再开工。此为双方义务。
 
+**jsonb 字段空判定三态枚举（2026-05-02 细化）：** Planner 写 jsonb / json 字段的"空判定"SQL 时，**必须显式枚举所有可能存储 shape**。jsonb 字段的"为空"在不同存储下判定不同：
+
+| 形态 | 含义 | 判定 |
+|---|---|---|
+| SQL `NULL` | 字段完全未设值 | `IS NULL` |
+| JSON `null` | 存了 `null` 字面量（如 `UPDATE ... SET col = 'null'::jsonb`） | `col::jsonb = 'null'::jsonb` 或 `jsonb_typeof(col) = 'null'` |
+| `{}` 空对象 | 存了空对象（如 `JSON.stringify({}) → '{}'`） | `col::text = '{}'` |
+| `[]` 空数组 | 存了空数组（如适用） | `col::text = '[]'` |
+
+漏掉任一态 → Codex 注入对应 fixture 即触发 FAIL（如 PHASE2 F-SI2-02 漏 JSON null）。
+
+**SQL 模板（spec push 前自检）：**
+```sql
+-- jsonb 字段判定"无可用值"必须穷举（按业务实际可能 shape 选择）：
+WHERE col IS NULL                    -- SQL NULL
+   OR col::jsonb = 'null'::jsonb     -- JSON null
+   OR col::text = '{}'               -- 空对象
+   OR col::text = '[]'               -- 空数组（如适用）
+```
+
+更稳妥：抽 SQL helper 模块（如 `src/lib/sql/<field>-empty-predicate.ts` 导出 `SQL_<FIELD>_HAS_NO_VALUE_BARE` 常量）让所有消费点（route / scan / 业务逻辑）共用同一谓词，避免漂移。
+
 来源：原条款（2026-04-18）+ aigcgateway BL-SYNC-INTEGRITY-PHASE1 F-SI-02 acceptance #5 引用 `syncSingleProvider` 函数 / endpoint / npm script 项目内全部不存在；Generator 用 mock provider 走 runModelSync 全路径代偿，Codex 也通过此路径 PASS — 没产生 fix-round 但浪费了 Generator 推理时间，且让"实施前验证步骤"事实上失效。
++ aigcgateway BL-SYNC-INTEGRITY-PHASE2 F-SI2-02 fix-round-1：spec D2 给 `(sellPrice IS NULL OR sellPrice::text = '{}')` 漏 JSON null（jsonb null 的 ::text 是 `'null'`），Codex 注入 `sellPrice: null` fixture 触发 unpricedActiveAliases 计数错配 → FAIL → fix-round-1。Generator 修复时抽 `src/lib/sql/alias-status.ts` 共享谓词，是范式优秀的代偿。
 
 ### 铁律 1.1：acceptance 的"实现形式"与"语义意图"必须分离
 
@@ -416,7 +439,7 @@ acceptance: "当日 rerun → rowsWritten > 0（T+0 可验证）；model 行 sta
 
 **写完 acceptance 后，对照已采纳铁律清单逐条自检：**
 
-- [ ] 铁律 1：涉及代码细节时，已 Read 源码 + file:line 引用？**spec acceptance 引用的所有内部命名（函数 / endpoint / npm script / CLI 工具）已 grep 确认存在；不存在的命名不进 acceptance（改为已存在的等价路径或拆出新 feature 实现它）。**
+- [ ] 铁律 1：涉及代码细节时，已 Read 源码 + file:line 引用？**spec acceptance 引用的所有内部命名（函数 / endpoint / npm script / CLI 工具）已 grep 确认存在；不存在的命名不进 acceptance（改为已存在的等价路径或拆出新 feature 实现它）。** **jsonb / json 字段的"空判定"SQL 已枚举所有可能 shape（SQL NULL / JSON null / 空对象 / 空数组按业务定）；建议抽 SQL helper 让消费点共用同一谓词。**
 - [ ] 铁律 1.1：具体技术形态（文件名/路径/API/网络请求）是否锁死？是否允许等价实现？
 - [ ] 铁律 1.2：证据来源是否限定在 Generator 代码 + Evaluator 测试可控范围？是否存在隐含的运维依赖？
 - [ ] 铁律 1.3：定量 acceptance（降幅/比值）是否显式处理零基线边界？是否允许 qualitative + quantitative 组合满足？
