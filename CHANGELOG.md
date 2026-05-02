@@ -5,6 +5,16 @@
 
 ---
 
+## v0.9.9 — 2026-05-02（aigcgateway BL-SYNC-INTEGRITY-PHASE1 1 条回流：Planner 铁律 1 细化 — 内部命名 grep 确认）
+
+**来源：** aigcgateway BL-SYNC-INTEGRITY-PHASE1 F-SI-02 acceptance #5 引用不存在函数。
+
+### Planner 铁律 1 细化：内部命名必须 grep 确认存在
+来源：BL-SYNC-INTEGRITY-PHASE1 F-SI-02 acceptance #5 写"dev/scratch DB 上跑一次 syncSingleProvider"，但该函数 / endpoint / npm script 项目内全部不存在（aspirational 命名）。Generator session_notes 自查识别后用 mock provider 走 runModelSync 全路径代偿，Codex 也通过此路径 PASS — 这次没产生 fix-round 但浪费了 Generator 推理时间，且让 spec 的"实施前验证步骤"事实上失效。这是铁律 1 ("Planner 涉及代码细节时必须 Read 源码") 的范围补充：不仅 file:line 要精确，**所引用的所有内部名也必须 grep 确认**。与铁律 1.8（复用 UI 组件能力核查）思路一致 — 都是 "spec 不得描述实际不存在/不可达的事物"。
+写入：`harness/planner.md` §铁律 1 末尾追加"内部命名 grep 确认（2026-05-02 细化）"小节 + 模板 grep 命令；自检 checklist 铁律 1 项强化为"acceptance 引用的所有内部命名已 grep 确认存在；不存在的命名不进 acceptance（改为已存在的等价路径或拆出新 feature 实现它）"。
+
+---
+
 ## v0.9.8 — 2026-05-01（aigcgateway BL-ADMIN-ALIAS-UX-PHASE1 2 条回流：Generator manual 任务归属 + Planner 铁律 1.8 复用组件能力核查）
 
 **来源：** aigcgateway BL-ADMIN-ALIAS-UX-PHASE1 verifying FAIL + fix-round-1 双重根因分析。

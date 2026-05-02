@@ -216,7 +216,18 @@ Planner 写 spec，若涉及以下内容，**必须先 Read 对应文件核实**
 - 用 ` ```sql ` / ` ```ts ` 等代码块贴真实片段
 - 标注 `file:line` 来源（例：`migration.sql:40-80`）
 
+**内部命名 grep 确认（2026-05-02 细化）：** acceptance 引用任何具体内部命名（**函数名 / API endpoint / npm script / CLI 工具 / 内部 hook**）时，**必须先 grep 确认其在仓内实际存在**，不得使用 aspirational 命名让 Generator 自行推断。否则：Generator 要么自行实现该名（可能扩 scope），要么代偿（用别的路径模拟），要么真去 fix-round 跟 Planner 校对——都浪费一轮。
+
+**Grep 模板（spec push 前必跑）：**
+```bash
+# 列出 spec 中所有形如 fooBar() / /api/admin/* / npx tsx scripts/* 的引用
+grep -rEn "(syncSingleProvider|/api/admin/<endpoint>|scripts/<script>)" src/ scripts/ package.json
+# 0 命中 = 该名不存在 → 不进 acceptance（改为已存在的等价路径或拆出新 feature 实现它）
+```
+
 **Generator 发现规格偏差时**：开工前提出"规格偏差报告"暂停；Planner 修订 spec 后再开工。此为双方义务。
+
+来源：原条款（2026-04-18）+ aigcgateway BL-SYNC-INTEGRITY-PHASE1 F-SI-02 acceptance #5 引用 `syncSingleProvider` 函数 / endpoint / npm script 项目内全部不存在；Generator 用 mock provider 走 runModelSync 全路径代偿，Codex 也通过此路径 PASS — 没产生 fix-round 但浪费了 Generator 推理时间，且让"实施前验证步骤"事实上失效。
 
 ### 铁律 1.1：acceptance 的"实现形式"与"语义意图"必须分离
 
@@ -405,7 +416,7 @@ acceptance: "当日 rerun → rowsWritten > 0（T+0 可验证）；model 行 sta
 
 **写完 acceptance 后，对照已采纳铁律清单逐条自检：**
 
-- [ ] 铁律 1：涉及代码细节时，已 Read 源码 + file:line 引用？
+- [ ] 铁律 1：涉及代码细节时，已 Read 源码 + file:line 引用？**spec acceptance 引用的所有内部命名（函数 / endpoint / npm script / CLI 工具）已 grep 确认存在；不存在的命名不进 acceptance（改为已存在的等价路径或拆出新 feature 实现它）。**
 - [ ] 铁律 1.1：具体技术形态（文件名/路径/API/网络请求）是否锁死？是否允许等价实现？
 - [ ] 铁律 1.2：证据来源是否限定在 Generator 代码 + Evaluator 测试可控范围？是否存在隐含的运维依赖？
 - [ ] 铁律 1.3：定量 acceptance（降幅/比值）是否显式处理零基线边界？是否允许 qualitative + quantitative 组合满足？
