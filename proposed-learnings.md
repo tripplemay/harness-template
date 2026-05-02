@@ -93,6 +93,21 @@
 
 ---
 
+## [2026-05-03] Generator — 来源：BL-025 F004 CI flaky `kol-profile.test.ts`
+
+**类型：** 新坑
+
+**内容：** Server actions 用 `void logAudit({...})` fire-and-forget 模式（不 await）让业务路径少一次 round-trip，但 integration test 在 action 返回后立即查 audit_log 会偶发 race（CI 高并发下成立，本地 dev 不易复现）。F003/F004 两轮跨同 commit 一次 PASS 一次 FAIL 验证为 flake，rerun 全绿。
+case 在 `src/app/[locale]/(app)/kols/[id]/actions.ts:83`（`void logAudit`）+ `tests/integration/kol-profile.test.ts:127`（`expect(audits).toHaveLength(1)`）。
+
+**建议写入：** 两选一：
+- `framework/harness/evaluator.md` §回归测试稳定性 — "fire-and-forget audit pattern 测试约束：要么 action 内部 await logAudit，要么测试用 `vi.waitFor(() => expect(audits)...)` 配合 50-100ms retry 上限"
+- `framework/harness/code-review.md`（如有）补一条 — server action 选 `void logAudit` vs `await logAudit` 的取舍：业务热路径优先 void，但凡 integration test 需要观察 audit_log 必须 await 或加 vi.waitFor
+
+**状态：** 待确认
+
+---
+
 <!-- 待确认的提案出现在此处，示例格式：
 
 ## [YYYY-MM-DD] [角色] — 来源：F-XXX
