@@ -21,22 +21,14 @@
 
 -->
 
-## [2026-05-04] Reviewer (CLI as Codex) — 来源：BL-030-F002
+## [2026-05-04] Planner Kimi — 来源：BL-030 prod backfill 执行
 
-**类型：** 模板修订
+**类型：** 新坑 + 铁律补充
 
-**内容：** Planner 在 spec acceptance 列出"跳转 / 链接 /xxx/{id}"等具体路由前，应核对项目实际路由是否存在（`grep -r "\[id\]/page.tsx" src/app` 或 `find src/app -name 'page.tsx' -path '*[*]*'`）。BL-030 spec §F002 写"跳转 /assets/{id}"但项目无该 detail 路由，Generator 实装链 `/assets?productId=X` 过滤页 — UX 等价但 Reviewer 验收时需判定是否 deviation。Spec 文字与项目路由错配让 Generator 被迫做"创造性翻译"，徒增审计负担。
+**内容：** BL-030-F003 backfill 脚本用 `withPlatformAdmin` 期望跨 tenant 扫 product 表 → 实际返回 0 行。RLS 调研：`withPlatformAdmin` 只设 `app.is_platform_admin='true'`，但 `product` 表 RLS 策略 (`tenant_isolation`) **只检查 `app.tenant_id`，不检查 `app.is_platform_admin`**。只有 `user` 表 RLS（user_isolation 策略）含 platform admin 旁路。Generator 误以为 `withPlatformAdmin` 是通用 RLS 旁路；spec §3.6 也未核对 product 表 RLS 实际策略。Planner 当时未 grep `pg_policy` 验证。**Planner 决策时落到 SQL 直跑（superuser 绕 RLS），25 行成功入库 + Product.aiAssets 缩水 + 幂等可重跑**。脚本本身 bug 留待后续 hotfix（不影响本批次 prod 已修）。
 
-**建议写入：** `framework/harness/planner.md` § Spec 写作 + 路由核对 checklist（"acceptance 中提到的 URL / 路由 / 端点必须先 grep 项目实际存在性"）
+**建议写入：**
+1. `framework/harness/planner.md` 铁律 1 加补充：spec 涉及 RLS / 跨租户扫描代码细节时，必须 grep `prisma/migrations/*` 中对应表的 `CREATE POLICY` 或 `pg_policy` 实测，确认 `withPlatformAdmin` / `withTenant` / 自定义 setting 在该表上的实际行为，不能假设"platform admin 万能"。
+2. `framework/harness/database-patterns.md`（如不存在则新建）记录"RLS 旁路矩阵"：哪些表的 policy 含 `app.is_platform_admin` 旁路、哪些只认 `app.tenant_id`、哪些有其他自定义 setting。当前已知：`user` 表含旁路（auth credentials 流必需）；`product` / `asset` / `audit_log` 等只认 tenant_id。
 
-**状态：** 待确认
-
-## [2026-05-04] Reviewer (CLI as Codex) — 来源：BL-030 整体
-
-**类型：** 新规律 + 模板修订
-
-**内容：** 数据通路迁移批次（写源 + 读源同时切换 + 历史 backfill）应在 D3 类决策中明确字段保留 / 删除策略 + 1 sprint 观察期清理批次预告，避免"幽灵字段"长期累积。BL-030 D3 选"A 方案保留 status 字段、内容字段不写、留 1 sprint 观察后单独清理批次"— 这个三段式（保留 / 不写 / 后清理）应作迁移批次模板。配套必备：(1) backfill 脚本默认 dry-run + idempotent + metadata 标记可批删；(2) 命名 / role 工具函数从 live 路径导出，backfill 共用同源真值防漂移；(3) deploy-checklist 列 5 product id 硬编码（防迁移漏）+ rollback DELETE WHERE metadata.backfilledFrom IS NOT NULL（幂等可重跑）。
-
-**建议写入：** `framework/templates/migration-batch-checklist.md`（新增），或 `framework/harness/deploy-patterns.md` 加 § "数据通路迁移批次模板"
-
-**状态：** 待确认
+**状态：** 待确认（BL-030 done 后 Planner 在下一 done 阶段或独立 hotfix 批次处理）

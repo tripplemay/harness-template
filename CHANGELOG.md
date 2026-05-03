@@ -5,6 +5,20 @@
 
 ---
 
+## v0.9.8 — 2026-05-04（BL-030 沉淀，2 条 learnings）
+
+**来源批次：** BL-030-kb-asset-bridge-migration（2026-05-04，KB→Asset 数据通路完整迁移；ADR-011 BL-025 scope miss 修复，5/5 features Reviewer 首轮 PASS fix_rounds=0）
+
+**触发原因：**
+- BL-030 F002 spec 写"跳转 /assets/{id}"，项目实际无 `/assets/[id]/page.tsx`（detail 通过 `/assets?productId=X` 列表页 + 右侧 drawer 选中实现）；Generator 实装链对路由，但 spec 字面错配 → Reviewer Soft-watch S1
+- BL-030 是首例"老数据通路 → 新数据通路"完整迁移批次，spec 起草时无现成模板对齐三段式数据处置 / backfill 规约 / 命名同源 / deploy-checklist 数据快照 / rollback 幂等等共性要求
+
+**变更：**
+- 修改 `framework/harness/planner.md`：新增铁律 4「spec 引用应用路由路径前必须 grep 实物存在性」（v0.9.8 — BL-030 沉淀）
+- 新增 `framework/templates/migration-batch-checklist.md`：数据通路迁移批次模板（含三段式数据处置 A/B/C 决策表 + backfill 4 项硬要求 + 命名工具同源 + deploy-checklist 硬编码数据快照 + rollback DELETE 幂等 SQL + Generator 实装 + Reviewer L2 + Planner done 收尾分章 checklist）
+
+---
+
 ## v0.9.7 — 2026-05-03（BL-027 沉淀，3 条 learnings）
 
 **来源批次：** BL-027-asset-followup-icon-hotfix（2026-05-03，7/7 features Reviewer 首轮 PASS，fix_rounds=0）

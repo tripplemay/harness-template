@@ -245,6 +245,26 @@ Planner 写 spec acceptance 引用 `docs/dev/` 下文件路径（如"在 docs/de
 
 **来源：** BL-026 F004/F005 spec 引用的 docs 文件实物缺；BL-027 F004 spec 写 docs/dev/rules.md（不存在），Generator 实装落 setup.md §9.5。连续两批 Reviewer Soft-watch 同一坑。
 
+### 铁律 4：spec 写应用路由路径前必须 grep 实物存在性（v0.9.8 — BL-030 沉淀）
+
+Planner 写 spec acceptance 引用应用路由路径（如"跳转 /assets/{id}"、"链 /campaigns/{id}/edit"、"redirect /outreach"）时，**必须先 grep 项目路由文件结构确认该路径存在**：
+
+```bash
+# 检查动态路由 /[locale]/(app)/<path>/[id]/page.tsx
+ls src/app/\[locale\]/\(app\)/<path>/ 2>/dev/null
+# 或语义化 grep
+grep -rn "params.*id" src/app/\[locale\]/\(app\)/<path>/ 2>/dev/null
+```
+
+否则 Generator 开工时被迫：
+
+- (a) 字面照写不存在的路由 → CI/runtime 不报错（Next.js 链接是字符串）但 UX 死链
+- (b) 改写为现存路由（如 `/assets?productId=X` 过滤页 + drawer 选中） → 与 spec 字面冲突，被 Reviewer Soft-watch
+
+**修订规则：** 路径不存在时，spec 应写"链到 `/{现有路由}` + 注明跳转后的 UI 行为（如选中、drawer 打开）"，而非编造嵌套 detail 路径。SPA 项目（如 Next.js App Router 含 list+drawer 模式）的 detail 通常是 list?id=X + 客户端 drawer，不是单独路由。
+
+**来源：** BL-030 F002 spec 写"跳转 /assets/{id}"（项目无 `/assets/[id]/page.tsx`，detail 通过 `/assets?productId=X` 列表页 + 右侧 drawer 选中实现）；Generator 实装链对，但 spec 文字错配 → Reviewer Soft-watch S1。
+
 ---
 
 ## status = "done" 时的收尾流程
