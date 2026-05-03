@@ -234,6 +234,17 @@ Planner 写 spec，若涉及以下内容，**必须先 Read 对应文件核实**
 - Generator 开工前规格偏差检查成为常态（节省 fix round）
 - 重复上次错误将承担召回责任（hotfix / 新修正批次）
 
+### 铁律 3：spec 写"在 docs/X.md 加段"前必须 ls 实物（v0.9.7 — BL-026/BL-027 持续坑）
+
+Planner 写 spec acceptance 引用 `docs/dev/` 下文件路径（如"在 docs/dev/rules.md §X 加段落"）时，**必须先 `ls docs/dev/*.md` 确认目标文件存在**。否则 Generator 开工时被迫二选一：
+
+- (a) 创建一个仅含此一段的新文件（违反"本批次需要谁"的克制原则）
+- (b) 改写到另一文件（与 spec 字面冲突，被 Reviewer Soft-watch）
+
+**修订规则：** 文件不存在时，spec 应写"在 docs/dev/{现有文件} 或新建 docs/dev/X.md 加段落（Generator 选位时优先现有文件）"。
+
+**来源：** BL-026 F004/F005 spec 引用的 docs 文件实物缺；BL-027 F004 spec 写 docs/dev/rules.md（不存在），Generator 实装落 setup.md §9.5。连续两批 Reviewer Soft-watch 同一坑。
+
 ---
 
 ## status = "done" 时的收尾流程

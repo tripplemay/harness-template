@@ -5,6 +5,22 @@
 
 ---
 
+## v0.9.7 — 2026-05-03（BL-027 沉淀，3 条 learnings）
+
+**来源批次：** BL-027-asset-followup-icon-hotfix（2026-05-03，7/7 features Reviewer 首轮 PASS，fix_rounds=0）
+
+**触发原因：**
+- BL-026 prod /assets ActionBar 渲染 "FILTER_ALT"/"ARROW_DROP_DOWN" 字面文字 — woff2 子集漏 filter_alt + arrow_drop_down ligature；hotfix 同时做四层守门加固
+- spec 写"docs/dev/rules.md 加段落"实物不存在（BL-026/BL-027 连续两批同一坑）
+- signoff-report.md §6 Soft-watch + §10 Framework Learnings 经 BL-025/BL-026/BL-027 三批默认结构，Reviewer 手动添加三次
+
+**变更：**
+- 修改 `framework/harness/material-symbols-pattern.md`：新增 §"四层守门"，沉淀 CI case + pre-commit hook + PR template + manifest 四层叠加防漏跑 regen script
+- 修改 `framework/harness/planner.md`：新增铁律 3「spec 引用 docs/X.md 路径前必须 ls 实物」
+- 修改 `framework/templates/signoff-report.md`：§Framework Learnings 去 "可选"、新增前置 §Soft-watch H2 节
+
+---
+
 ## v0.9.6 — 2026-05-03（BIx + BL-025 累积，8 条 learnings 全部按 Planner 预判落地）
 
 **来源批次：** KOLMatrix BIx-mvp-polish-pass（2026-05-02）+ BL-025-asset-library（2026-05-02 → 2026-05-03）

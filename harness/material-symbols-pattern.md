@@ -81,3 +81,18 @@ extended the manifest with the 10 BL-025 icons (`folder_open`,
 ahead of F004 landing so the woff2 was warm by the time those
 spans appeared in the codebase. F009.3 codifies the guard test.
 F009.4 surfaces the maintenance contract at PR-review time.
+
+## 四层守门（v0.9.7 — BL-027 沉淀）
+
+Material Symbols 字体子集是"沉默 fail"的高危区：grep 漏一个 icon → woff2 缺 glyph → 浏览器渲染字面字符串。BL-026 prod ActionBar 渲染 "FILTER_ALT"/"ARROW_DROP_DOWN" 字面文字源于此。**BL-027 用四层叠加守门保证任何一层都能拦下"漏跑 regen script"：**
+
+| 层 | 文件 | 触发时机 | 拦截内容 |
+|---|---|---|---|
+| 1. 输入端：manifest 兜底 | `scripts/material-symbols-icons-manifest.txt` | Generator 加 icon 时手动追加 | Pattern 5a-5e 动态形态 grep 抓不到的 |
+| 2. 输出端：CI case #7 | `tests/integration/material-symbols-coverage.test.ts` | 每次 push CI | 已生成 woff2 与"现在跑 regen 应该生成的"字节数不一致 → fail，提示"跑 script + commit woff2" |
+| 3. 自动化：pre-commit hook | `framework/templates/pre-commit-hook.sh` + `docs/dev/setup.md §9.5` | 本地 commit 前 | 改了 .tsx 含新 icon 但 woff2 没 stage → block 提交 |
+| 4. 评审端：PR template | `.github/pull_request_template.md` | PR 创建时 | 强制 PR 作者勾"已跑 regen script + commit woff2" 2-of-N 选项 |
+
+**为什么四层都需要：** 任意单层都可能因人/机器/环境失效（grep 漏型 / hook 没装 / CI flaky / PR 模板被忽略）。多层叠加 = 任意一层 catch 都不会 leak 到 prod。
+
+**新增 icon 操作回顾：** 仍走 §"When you add a new icon" 三步，4 层只是"漏做"时的捕网。
