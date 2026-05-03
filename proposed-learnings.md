@@ -108,6 +108,20 @@ case 在 `src/app/[locale]/(app)/kols/[id]/actions.ts:83`（`void logAudit`）+ 
 
 ---
 
+## [2026-05-03] Generator (johnsong) — 来源：BL-025-F001 staging deploy 失败
+
+**类型：** 新坑（已修，沉淀防再发）
+
+**内容：** `NODE_ENV=production` + `npm ci` 在本 VM 上不跑 package.json 的 `postinstall: prisma generate`，导致 `node_modules/.prisma/client/` 缺席 → `next build` 阶段 `tsc` 解析 `import { PrismaClient } from "@prisma/client"` 失败（`@prisma/client/index.d.ts` 只 `export * from .prisma/client/default`，无生成的 client 等于无 PrismaClient 类型）。
+本批次 BL-025 schema 加了 `Asset` model + 3 enum，`src/lib/assets/*` 必引 PrismaClient → 第一次撞到此坑（之前批次 schema 改动小，旧 `.prisma/client/` 仍能 satisfy build typecheck）。
+本批次 hotfix 已落：`infrastructure/deploy-staging.sh` 和 `scripts/deploy-prod.sh` 均补 `npx prisma generate` 显式步骤（npm ci 之后、prisma migrate deploy 之前）。
+
+**建议写入：** `framework/harness/deploy-patterns.md` §3 完整链 checklist 补一项："npm ci 之后必须 explicit `npx prisma generate`，不能依赖 postinstall hook（NODE_ENV=production 行为不可信）"。
+
+**状态：** 待确认
+
+---
+
 <!-- 待确认的提案出现在此处，示例格式：
 
 ## [YYYY-MM-DD] [角色] — 来源：F-XXX
