@@ -5,6 +5,50 @@
 
 ---
 
+## v0.9.6 — 2026-05-03（BIx + BL-025 累积，8 条 learnings 全部按 Planner 预判落地）
+
+**来源批次：** KOLMatrix BIx-mvp-polish-pass（2026-05-02）+ BL-025-asset-library（2026-05-02 → 2026-05-03）
+
+**触发原因：**
+- BIx 收尾踩 WSL2 fs vitest timeout（fast-glob 5s 偶发 fail）+ perf 类 acceptance 工具缺位 + 首轮 PASS 判据无明文规则
+- BL-025 spec drafting 漏 §F004.A/B/C 三段（用户主动 challenge 才补全）+ Material Symbols 19 漏 icon prod 字符方框 + cross-agent staged 索引误打包（commit 3da4248）+ F004 audit-log fire-and-forget flaky test + F001 staging deploy `prisma generate` 缺
+- 用户 2026-05-03 决议：8 条全部按 Planner 预判落地（A 路线）
+
+**变更：**
+- 修改 `vitest.config.ts`：加 `testTimeout: 60_000`（WSL2 fast-glob fs 慢防 5s 默认 timeout 偶发 fail；CI Linux 容器无影响）
+- 修改 `harness-rules.md` 铁律 #12：任何 commit 前必跑 `git diff --cached --name-only` 确认 staged 索引（多角色同工作树时防误打包对方 WIP）
+- 修改 `framework/harness/deploy-patterns.md`：
+  - §3.2 完整链 checklist 加新步骤 3.5「`npx prisma generate`」（npm ci 之后立即跑，不依赖 postinstall hook）
+  - §3.3 Spec 起草期 checklist 同步加 prisma generate 行
+- 修改 `framework/harness/planner.md`：
+  - 新增 §「Perf 类 acceptance 必须自带『工具 + 输出物』checklist」（spec § acceptance 必含工具入 devDeps + 输出快照位置）
+  - 新增 §「UI 类 spec 起草前 mandatory self-check checklist」（4 段全含才能交付 Generator + 推荐机器化 grep 守门）
+- 修改 `framework/harness/evaluator.md`：
+  - §12 新增「首轮 verifying PASS 的硬条件」（acceptance 全代码层 + L1/L2 + soft-watch 明文兜底，3 条全满足才能切 done）
+  - §13 新增「L2 烟测含字体子集必须 ≥ 5 dynamic callsite spot check」（指向 material-symbols-pattern.md）
+  - §14 新增「fire-and-forget audit pattern 测试约束」（两选一：内部 await 或 vi.waitFor）
+- 修改 `framework/harness/ui-fidelity-guardrail.md` §2 顶部加严格强制声明（指向 planner.md 自检 checklist + Reviewer L1 受理前 grep）
+- 已存在 `framework/harness/material-symbols-pattern.md`（5 漏范式 + manifest 维护 + CI 守门 pattern；BL-025-F009 commit `e6cd95f` 实际落地，此次在 evaluator.md §13 + CHANGELOG 引用）
+- 归档 8 条 proposed-learnings → `framework/archive/proposed-learnings-archive-v0.9.6.md`
+- 清空 `framework/proposed-learnings.md` 回 template
+
+**8 条 learnings 列表：**
+- [#1] WSL2 fs vitest 5s 默认 timeout 偶 fail（BIx F005 L1 + BL-025 verifying 两次踩同根因）
+- [#2] perf 类 acceptance 工具必入 devDeps（BIx F005 §6 O3 数字层无证据）
+- [#3] 首轮 verifying PASS 判据 — 全代码层 + L1/L2 + soft-watch 明文兜底（BIx + BL-025 两连续验证）
+- [#4] cross-agent 同工作树 git add 仍混 staged 索引 → 铁律 #12（BIx commit 3da4248）
+- [#5] UI 类 spec 起草前自检 checklist（BL-025 spec drafting 漏 §F004.A/B/C 三段，靠用户 challenge 才补）
+- [#6] Material Symbols 5 漏范式 + L2 字体子集烟测 ≥ 5 callsite（BIx hotfix bb637a1 + BL-025-F009 守门加固）
+- [#7] fire-and-forget audit pattern 测试约束（BL-025 F004 CI flaky `kol-profile.test.ts`）
+- [#8] NODE_ENV=production npm ci 不跑 postinstall prisma generate（BL-025 F001 staging deploy 失败）
+
+**未采纳的子建议（暂存 backlog）：**
+- pre-commit hook 守门 commit-tag 与 staged 文件路径一致性（item #4 子建议 b）— 复杂度高、维护成本不值
+- pre-commit hook 守门 manifest vs grep 一致性（item #6 子建议 c）— 同上
+- 新建 `framework/harness/code-review.md`（item #7 候选位置）— 框架文件越多越乱，统一收纳到 evaluator.md §回归测试稳定性
+
+---
+
 ## v0.9.5 — 2026-05-01（B5 7 轮 fixing + MVP 3 轮 fixing 累积经验沉淀，12 条 learnings）
 
 **来源批次：** KOLMatrix B5-kol-data-enrichment（2026-04-30）+ MVP-internal-demo-prep（2026-05-01）

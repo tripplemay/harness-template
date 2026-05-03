@@ -214,6 +214,12 @@ git pull --ff-only origin main
 set -a && source .env.<staging> && set +a
 npm ci --include=dev
 
+# 3.5. ⚠️ Prisma client 生成（必跑显式步骤，不依赖 postinstall hook）
+# NODE_ENV=production 下 npm ci 不跑 package.json 的 postinstall（含 prisma generate），
+# 导致 node_modules/.prisma/client/ 缺席 → next build 阶段 tsc 解析
+# `import { PrismaClient } from "@prisma/client"` 失败。来源：BL-025-F001 staging deploy 失败。
+npx prisma generate
+
 # 4. ⚠️ Schema 迁移（必跑，即便本批次没改 schema 也跑 — 防漏）
 npx prisma migrate deploy
 
@@ -241,6 +247,7 @@ psql ... 'SELECT COUNT(*) FROM <table> WHERE <new_col> IS NOT NULL'
 
 每条 spec § "staging deploy 步骤" 必含：
 
+- [ ] `npx prisma generate`（npm ci 之后立即跑，不依赖 postinstall hook；BL-025-F001 沉淀）
 - [ ] `prisma migrate deploy`（不论本批次是否改 schema）
 - [ ] 数据回填脚本名 + 抽样验证条件（如含数据填充）
 - [ ] `pm2 delete + sourced-shell start`（不要写 reload）

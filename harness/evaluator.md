@@ -210,3 +210,71 @@ git diff --name-only <staging-sha>..HEAD
 来源：KOLMatrix MVP-internal-demo-prep fixing-1（C-03 /database 三卡名 spec 写 "Market Intel/Campaign Timing/Budget Benchmark" 但实际代码是 "AI Intelligence/Coverage Gap/Engagement"）。Reviewer 标 FAIL 触发 fixing 浪费 1 轮；正解是直接 update checklist 文本。
 
 **Planner 配套防御：** verifying 前 grep 实际代码验证 checklist 元素存在性（详见 `planner.md` "verifying 前 checklist 起草"）。
+
+---
+
+## 12. 首轮 verifying PASS（fix_rounds=0）的硬条件
+
+**背景：** BIx-mvp-polish-pass + BL-025-asset-library 两个连续批次首轮验收即 PASS（fix_rounds=0），跳过 fixing/reverifying 直接切 done。验证两次后形成可复用判据。
+
+**首轮 PASS 必须同时满足 3 条：**
+
+| 条件 | 说明 |
+|---|---|
+| (a) **Acceptance 全代码层 PASS** | spec § acceptance 列出的所有 hard items 全部实装且符合，包括硬性测试文件（`tests/integration/*` `tests/e2e/*` 等）必须存在且 ≥ spec 要求 case 数 |
+| (b) **L1 + L2 全 PASS** | L1（lint / tsc / unit + integration test / build / coverage）+ L2（staging 浏览器走查 / 视觉一致性 / SHA 对齐 / 安全头 / 数据抽样）全部 PASS |
+| (c) **所有 Soft-watch 项有明文兜底机制** | 每条 soft-watch 必须在 progress.json / spec / signoff 中明文写兜底（如 "7-day follow-up agent" / "BL-025-followup mini-batch deferred" / "Planner 已声明的 acceptance soft-watch"），不能"反正有问题再说" |
+
+**只要 (c) 中有任何一条 soft-watch 没明文兜底 → 不能切 done，必须切 fixing 让 Generator 把兜底机制写进 progress.json 或 spec。** 即便代码层全 PASS，soft-watch 没兜底 = 验收不闭环。
+
+**反例（不算首轮 PASS）：**
+- 代码 100% 实装，但 spec 写"perf 目标 ≥X" 没工具可测，标 soft-watch 但没说"何时何处补测"→ FAIL
+- 视觉 baseline 有 4 项 deferred，没说 deferred 到哪个批次 → FAIL
+
+**Reviewer 决策路径：**
+1. 跑 L1 → 全 PASS
+2. 跑 L2 → 全 PASS
+3. 列出本轮所有 soft-watch（acceptance 偏离 / 已知妥协 / 数字层无证据 / etc）
+4. 对每条 soft-watch 检查 progress.json / spec / signoff §6 是否有明文兜底
+5. 缺任一兜底 → 标 FAIL，回 Generator 补；全有 → 切 done
+
+来源：BIx-mvp-polish-pass signoff（2026-05-02）+ BL-025-asset-library signoff（2026-05-03）+ framework CHANGELOG v0.9.6 [#3]。
+
+---
+
+## 13. L2 烟测含字体子集（Material Symbols / etc）必须 ≥ 5 dynamic callsite spot check
+
+**背景：** BIx F005-B Material Symbols self-host 子集脚本仅 3 grep pattern，漏 5 类动态范式（JSX prop / 三元 / 对象值 key≠icon / 数组元素 / return + ?? fallback），prod 用户在 dashboard / discovery / crm / roi / database / knowledge-base 6 页都看到 19 个字符方框（`TRENDING_FLAT` / `bookmark_added` 等）。spec §F005 acceptance "100+ 处 material-symbols-outlined 全渲染无字符方框" 是抽样验证，未跑全 callsite。
+
+**Reviewer L2 烟测处理规则：**
+
+| 情境 | 处理 |
+|---|---|
+| Feature 含字体子集（Material Symbols / Font Awesome subset / 自定义 woff2 等） | L2 烟测必须 spot check ≥ 5 个 dynamic callsite（不只看 grep 出的 baseline icons）。dynamic = JSX prop / 三元 / 对象值 / 数组 / return + ?? fallback 等 grep pattern 难命中的写法 |
+| Spot check 命中字符方框 / 缺字 | 标 FAIL，触发 fixing。同时建议 Generator 在 manifest 文件显式列漏 icon |
+| 子集脚本无 manifest 文件兜底 | signoff 注 soft-watch："字体子集脚本仅靠 grep，建议下批次加 manifest 兜底" |
+
+**配套：** 详见 `framework/harness/material-symbols-pattern.md`（5 漏范式 + manifest 维护 + CI 守门 test 完整 pattern）。该文件已在 BL-025-F009 落地。
+
+来源：BIx hotfix bb637a1（19 漏 icon prod 暴露）+ BL-025-F009 守门加固 + framework CHANGELOG v0.9.6 [#6]。
+
+---
+
+## 14. 回归测试稳定性 — fire-and-forget audit pattern 测试约束
+
+**背景：** Server actions 用 `void logAudit({...})` fire-and-forget 模式（不 await）让业务路径少一次 round-trip，但 integration test 在 action 返回后立即查 audit_log 会偶发 race（CI 高并发下成立，本地 dev 不易复现）。BL-025 F003/F004 两轮跨同 commit 一次 PASS 一次 FAIL 验证为 flake，rerun 全绿。
+
+**case 站点：** `src/app/[locale]/(app)/kols/[id]/actions.ts:83`（`void logAudit`）+ `tests/integration/kol-profile.test.ts:127`（`expect(audits).toHaveLength(1)`）。
+
+**两选一规约：**
+
+| 方案 | 适用场景 |
+|---|---|
+| (A) **Action 内部 `await logAudit`** | 业务路径不是热点（< 100 RPS） + 测试需观察 audit_log，简单可靠 |
+| (B) **测试改用 `vi.waitFor(() => expect(audits)...)`** | 业务路径是热点，必须保留 fire-and-forget；waitFor 50-100ms retry 上限 |
+
+**Generator 选择决策（开工时落 generator_handoff）：** 优先 (A)，仅在业务路径明确是热点（>100 RPS / <100ms p99）时降级 (B)。
+
+**Reviewer 验收：** 看到 `void logAudit` + integration test 直接 `expect(audits)` 同时存在 → 直接标 PARTIAL（race condition 风险），要求 Generator 选 (A) 或 (B) 之一显式声明。
+
+来源：BL-025 F004 CI flaky `kol-profile.test.ts` + framework CHANGELOG v0.9.6 [#7]。

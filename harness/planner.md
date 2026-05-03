@@ -316,3 +316,58 @@ KOLMatrix MVP-internal-demo-prep fixing-1（C-03 /database 三卡）案例：
 **Generator 配套防御（建议）：** PR description 写「本批次 UI 改动元素列表：X / Y / Z（代码实际命名）」，Planner 起草 checklist 时直接复用。
 
 来源：MVP-internal-demo-prep fixing-1。配套见 `evaluator.md` §11「Smoke checklist 文本陈旧时直接 update 而非标 FAIL」。
+
+---
+
+## Perf 类 acceptance 必须自带「工具 + 输出物」checklist
+
+**背景：** BIx F005 acceptance §6 O3 要求 "实测初始 JS 减 ≥ 200KB gzipped"，但 spec 没列 `@next/bundle-analyzer` 入 devDeps，Reviewer 验收时无工具可跑 → 数字层 acceptance 无证据可拉，被迫降级为 "soft-watch / 后续补"。
+
+**根因：** Perf 类（bundle size / Lighthouse score / TTFB / TTI / cold-start）acceptance 必须自带"测量工具 + 输出快照位置"，否则验证从源头失活。
+
+**Spec 起草硬要求：**
+
+任何含数字层 perf acceptance 的 feature，spec § acceptance 必须含两段：
+
+```markdown
+**测量工具（开工前装）：**
+- [ ] `npm install --save-dev @next/bundle-analyzer`（或对应 perf 工具）
+- [ ] 落 devDeps 入 package.json，commit 时一并入
+
+**输出快照（验收时提供）：**
+- [ ] 跑 `ANALYZE=true npm run build` 生成 bundle 报告
+- [ ] 报告快照保存至 `docs/test-reports/<batch>-bundle-snapshot-YYYY-MM-DD.html`
+- [ ] signoff 引用快照 + 实测数字（如 "main bundle 442KB → 215KB，减 227KB gzipped ≥ 200KB ✅"）
+```
+
+**Reviewer 配套：** 验收 perf acceptance 时先确认 spec 列了工具且 devDeps 已含，再跑工具拿数字。两步缺任一 → 直接标 PARTIAL（不是 FAIL，但需 Planner 补 spec 后重验）。
+
+来源：BIx F005 + framework CHANGELOG v0.9.6 [#2]。
+
+---
+
+## UI 类 spec 起草前 mandatory self-check checklist
+
+**背景：** `framework/harness/ui-fidelity-guardrail.md` §2 已规定所有 UI 类 feature spec 必须含 4 段（§2.1 原型路径 + §2.2 必用公共组件清单 + §2.3 不得简化清单 + §2.4 visual baseline 硬要求）。但 BL-025 Planner 起草 spec 时**漏写 3/4**（仅 §2.1），靠用户主动 challenge "新页面会严格按框架还原 + 抽公共组件 + 不手写吗?" 才补全。规范存在但自审缺失 = 实际等于无规范。
+
+**Planner 起草 UI 类 spec 自审 checklist（spec lock 前必跑）：**
+
+- [ ] §2.1 列了 Stitch HTML 原型路径（`design-draft/.../*.html`，不是 PNG）
+- [ ] §2.2 列了必用公共组件清单（`@/components/common/*` 全部相关组件 + 5 禁止行为）
+- [ ] §2.3 列了「不得简化的 N 元素」+「不得新增的 M 元素」（数字明确，逐元素列）
+- [ ] §2.4 列了 visual baseline 硬要求（具体几个 PNG + L2 浏览器并排路径）
+- [ ] 4 段缺任一 → spec **不能交付**给 Generator，必须补全
+
+**机器化（推荐）：** Planner 在 spec lock 前跑（建议未来加 pre-commit hook 自动跑）：
+
+```bash
+# 检查 UI feature spec 是否含全 4 段
+spec=docs/specs/<batch>-spec.md
+for section in "原型参考" "必用公共组件清单" "不得简化" "visual baseline"; do
+  grep -q "$section" "$spec" || echo "MISSING: $section"
+done
+```
+
+**反面案例：** BL-025 spec drafted-complete v1 仅写"参考 design-draft/BL-025-asset-library/variant-a-296k/"，§2.2/2.3/2.4 全缺。用户 challenge → Planner 加 §F004.A/B/C 三段（19 不得简化 + 4 不得新增 + 3 新公共组件 + visual baseline 4 个）→ 才进 building。如无 challenge，Generator 会以"自由发挥"模式做，Reviewer L1 grep 反范式时大批量 FAIL。
+
+来源：BL-025 spec drafting + framework CHANGELOG v0.9.6 [#5]。配套见 `ui-fidelity-guardrail.md` §2 顶部强制声明。
