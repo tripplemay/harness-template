@@ -176,6 +176,59 @@ CI 容易漏掉这一条因为 `chore(state)` paths-ignore 跳过 typecheck。Ge
 
 ---
 
+## 4. RLS 旁路矩阵 + cross-tenant ops 决策树
+
+### 4.1 坑
+
+`withPlatformAdmin` 名字让人以为它是"通用 RLS 旁路"，实际只对 `user` 表的 `user_isolation` 策略生效（policy 显式判 `app.is_platform_admin = true`）。其它带 RLS 的表（`product` / `asset` / `kol` / `campaign` / `email_template` / `email_log` / `kol_campaign` / `campaign_metric` / `weekly_report`）只认 `app.tenant_id`，没看到匹配 tenant 就**静默返 0 行**——不会抛错，看上去查询正常但结果是空。
+
+KOLMatrix BL-030-F003 backfill 脚本就踩了这个坑：用 `withPlatformAdmin` 跨 tenant 扫 `product` 表，prod 跑出来 0 行，到 BL-031 才暴露。生产 5 个 product 的 ai_assets 内容延迟一天进 Asset 表。
+
+### 4.2 旁路矩阵
+
+| 表 | RLS 状态 | 旁路条件 |
+|---|---|---|
+| `tenant` | **未启用 RLS** | 任何 connection 都可读（credentials auth 流的 lookup 表） |
+| `user` | RLS on | `app.tenant_id` = uuid **OR** `app.is_platform_admin` = true |
+| `product` / `asset` / `kol` / `campaign` / `email_template` / `email_log` / `kol_campaign` / `campaign_metric` / `weekly_report` | RLS on | 仅 `app.tenant_id` = uuid（platform_admin 不解） |
+
+### 4.3 cross-tenant ops 决策树
+
+应用层（Prisma client 走 `kolmatrix_app` role）想跨 tenant 操作时：
+
+1. **是否能枚举 tenant 列表？** `prisma.tenant.findMany` 直接读（tenant 表无 RLS）
+2. **每个 tenant 的业务读写 →** `withTenant(tenantId, tx => ...)` 串行循环，policy 自动生效
+3. **绕不过 RLS（跨 tenant 直接 SELECT 业务表）→** ops 层走 sudo postgres `psql` 直跑（superuser 绕 RLS）；migration / backfill / 一次性 admin 任务专用，不进应用代码路径
+
+应用代码**不应**出现 `SET LOCAL row_security = off`、`SET ROLE postgres` 等 superuser 切换——这把 RLS 完全卸了，是 audit 灾难。需要这种力度的操作 = 该任务属于 ops 层而非 app 层。
+
+### 4.4 BL-030 案例的正解
+
+`scripts/migrate-product-aiassets-to-asset.ts` 的 `scanProducts`：
+
+```typescript
+// ❌ 错的：withPlatformAdmin 对 product 表无效，silently 返 0 rows
+return withPlatformAdmin((tx) => tx.$queryRaw`SELECT ... FROM product`);
+
+// ✅ 对的：tenant.findMany 直读 + per-tenant withTenant 累加
+const tenants = await prisma.tenant.findMany({ select: { id: true } });
+const rows: ProductScanRow[] = [];
+for (const { id: tenantId } of tenants) {
+  const slice = await withTenant(tenantId, (tx) => tx.$queryRaw`SELECT ... FROM product`);
+  rows.push(...slice);
+}
+return rows;
+```
+
+### 4.5 Generator / Planner 检查清单
+
+- [ ] 任何用 `withPlatformAdmin` 的代码点：被读的表是否真的是 `user` 或无 RLS 表？读 `product` / `asset` / `kol` 等业务表时它**不生效**
+- [ ] 跨 tenant 扫描需求 = 要么 `tenant.findMany` + `withTenant` 循环，要么标注为 ops 层任务走 sudo postgres
+- [ ] 应用代码内出现 `SET LOCAL row_security = off` / `SET ROLE postgres` = 立即换 ops 层路径
+- [ ] backfill / migration 脚本：fixture 必须含 ≥2 tenant，验证扫到所有 tenant 而非首 tenant 或 0
+
+---
+
 ## 版本历史
 
 | 日期 | 修订 | 来源 |
@@ -183,3 +236,4 @@ CI 容易漏掉这一条因为 `chore(state)` paths-ignore 跳过 typecheck。Ge
 | 2026-04-20 | 初版沉淀（§1 RLS NULLIF） | KOLMatrix BI1-F008 |
 | 2026-04-20 | §2 DB 命名 / 角色 / Grant 与 migration 一致性 | KOLMatrix BI2 DB 命名坑 |
 | 2026-05-01 | §3 Prisma 7+ JSON 列写入需 InputJsonValue cast | KOLMatrix B5-F004/F006 同坑 |
+| 2026-05-04 | §4 RLS 旁路矩阵 + cross-tenant ops 决策树 | KOLMatrix BL-030-F003 backfill scanProducts 0 行（BL-031-F003 hotfix） |
