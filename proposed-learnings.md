@@ -21,14 +21,16 @@
 
 -->
 
-## [2026-05-04] Planner Kimi — 来源：BL-030 prod backfill 执行
+## [2026-05-04] Planner Kimi — 来源：BL-030 backfill ops → BL-031 暴露 FK orphan
 
 **类型：** 新坑 + 铁律补充
 
-**内容：** BL-030-F003 backfill 脚本用 `withPlatformAdmin` 期望跨 tenant 扫 product 表 → 实际返回 0 行。RLS 调研：`withPlatformAdmin` 只设 `app.is_platform_admin='true'`，但 `product` 表 RLS 策略 (`tenant_isolation`) **只检查 `app.tenant_id`，不检查 `app.is_platform_admin`**。只有 `user` 表 RLS（user_isolation 策略）含 platform admin 旁路。Generator 误以为 `withPlatformAdmin` 是通用 RLS 旁路；spec §3.6 也未核对 product 表 RLS 实际策略。Planner 当时未 grep `pg_policy` 验证。**Planner 决策时落到 SQL 直跑（superuser 绕 RLS），25 行成功入库 + Product.aiAssets 缩水 + 幂等可重跑**。脚本本身 bug 留待后续 hotfix（不影响本批次 prod 已修）。
+**内容：** Planner 在 BL-030 done 阶段为不阻塞用户，绕过 Generator F003 backfill 脚本 RLS bug，用 SQL 直跑 INSERT 25 条 Asset 行（绕过 createAsset mutation）。**后果：** createAsset 内的 dualWriteEmailTemplateOnCreate 副作用未跑，15 条 ai_generated email 在 email_template 表无镜像；email_log.template_id 有 FK 到 email_template.id → 一旦用户 send 必撞 FK 500。隐藏不到 24h，BL-031 启动 Phase 1 调研时 Planner 自查发现并修补。
+
+**根因：** Planner 决定 ops 路径时，看的是 mutation 的"主写"（INSERT into asset），未列写其内部所有副作用 checklist（dual-write / audit log / cache invalidation / 其它表 mirror 等）。"绕过 mutation = 等价于跑相同 SQL" 是错误等价。
 
 **建议写入：**
-1. `framework/harness/planner.md` 铁律 1 加补充：spec 涉及 RLS / 跨租户扫描代码细节时，必须 grep `prisma/migrations/*` 中对应表的 `CREATE POLICY` 或 `pg_policy` 实测，确认 `withPlatformAdmin` / `withTenant` / 自定义 setting 在该表上的实际行为，不能假设"platform admin 万能"。
-2. `framework/harness/database-patterns.md`（如不存在则新建）记录"RLS 旁路矩阵"：哪些表的 policy 含 `app.is_platform_admin` 旁路、哪些只认 `app.tenant_id`、哪些有其他自定义 setting。当前已知：`user` 表含旁路（auth credentials 流必需）；`product` / `asset` / `audit_log` 等只认 tenant_id。
+1. `framework/harness/planner.md` 新增铁律 5「Planner ops 绕业务 mutation 函数前必须列写 mutation 内所有副作用 checklist 同步执行」 — Planner 决策"用 SQL ops 替代 mutation"前，必须 grep mutation 函数内所有 await 调用（dual-write / logAudit / queue.push / cache.invalidate 等），列入 ops SQL 一并执行；不能仅做主表 INSERT。
+2. `framework/templates/migration-batch-checklist.md` §四 (Planner done 收尾) 加 checklist 项：「若批次中 Planner 用过 SQL ops 替代 mutation 调用，必须列出对应 mutation 的所有副作用并人工验证 / SQL 补齐」。
 
-**状态：** 待确认（BL-030 done 后 Planner 在下一 done 阶段或独立 hotfix 批次处理）
+**状态：** 待确认（BL-031 done 阶段处理）
