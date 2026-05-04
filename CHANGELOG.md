@@ -5,6 +5,30 @@
 
 ---
 
+## v0.9.9 — 2026-05-04（BL-030/BL-031/BL-032 三批合并沉淀，8 条 learnings）
+
+**来源批次：**
+- BL-030-kb-asset-bridge-migration（Planner SQL ops 漏 dual-write 致 BL-031 暴露 FK orphan）
+- BL-031-composer-locale-product-filter-hotfix（mock-only test cuid bug + Reviewer 越界 ops）
+- BL-032-ai-prompt-token-fix-and-backfill（Generator 角色冲突 + AI prompt placeholder 规约 + dualWrite silent count）
+
+**触发原因：**
+- Planner 在 BL-030 done 阶段为不阻塞用户绕过 mutation 函数用 SQL 直跑，漏 dualWriteEmailTemplateOnCreate 副作用 → 15 条 ai_generated email 在 email_template 无镜像 → BL-031 启动 Phase 1 调研发现 FK orphan 风险
+- BL-031-F003 backfill 脚本 mock-only 单测 PASS，staging 端到端二跑发现 `${productId}::uuid` cast 撞 42883（asset.product_id 实际是 text）→ c1405c7 修
+- BL-031 Reviewer 跑 SQL ops 处理 staging orphan asset，用户「C1b 破例授权」— 跨角色 ops 框架未规范
+- BL-032 Generator johnsong 启动识别 `./generator.md` 字面硬规与 `.auto-memory/role-context/generator.md` 软规直接冲突，停工等仲裁
+- BL-032 KB AI prompt 未指定 placeholder 规约，claude-haiku-4.5 用方括号 → 替换 regex 仅认 Mustache → 字面字符串发出
+- BL-032 dualWriteEmailTemplateOnUpdate updateMany 静默返 count=0 模式 — Asset 端写成功但 mirror 缺失时上层无感知
+
+**变更：**
+- 修改 `framework/harness/planner.md`：新增铁律 5「Planner ops 绕业务 mutation 必列副作用 checklist」+ 铁律 6「跨角色 ops 必须用户书面授权 + session_notes 记账」+ 铁律 7「角色文件多副本一致性，修订前 grep 全部副本同 commit 改」
+- 修改 `framework/harness/database-patterns.md`：新增 §5 跨表 id 类型一致性（cuid vs uuid cast 验证）+ §6 Silent updateMany 模式（显式 stats 日志 + 长期改返 count）+ §7 Generator 实装后 staging 端到端跑 .ts 脚本硬要求
+- 修改 `framework/harness/generator.md`：测试边界单行硬规替换为 5 行测试类型矩阵（单元/集成 = Generator + Evaluator 跑 / E2E + 压测 + code review = Evaluator / 回归同 commit 补 = Generator）+ 「Generator 写测试 ≠ 自评」铁律一致性声明 + scripts/*.ts staging 端到端跑硬要求
+- 修改 `framework/harness/ai-action-contract.md`：新增 §3 AI 输出 placeholder 规约 + server-side validation 兜底（prompt 必明文 + retry 候选 + 适用范围扩展到全 token-pipeline）
+- 修改 `framework/templates/signoff-report.md`：新增 §L2 实测记录节（staging git_sha 对齐 + 端到端流证据 + invariant 验证 + 浏览器手动验）+ §Ops 副作用记录节（任何 SQL ops 必写副作用对齐列 + 用户授权时间戳）
+
+---
+
 ## v0.9.8 — 2026-05-04（BL-030 沉淀，2 条 learnings）
 
 **来源批次：** BL-030-kb-asset-bridge-migration（2026-05-04，KB→Asset 数据通路完整迁移；ADR-011 BL-025 scope miss 修复，5/5 features Reviewer 首轮 PASS fix_rounds=0）

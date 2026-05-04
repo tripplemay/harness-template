@@ -7,9 +7,21 @@
 
 **文档约定：**
 - 实现前先读 `docs/specs/` 下对应规格文档
-- **不写任何测试**（单元测试、集成测试、E2E 脚本、压测脚本均不负责）——测试域完整归属 Codex
+- **测试边界：按下表分工矩阵执行（v0.9.9 — Generator 角色测试边界矩阵化沉淀，2026-05-04）**
+
+  | 测试类型 | 写代码 | 跑/收报告 | 备注 |
+  |---|---|---|---|
+  | 单元 / 集成测试（Generator 自己实现的代码）| **Generator** | Evaluator | 与实现同 commit；feature acceptance 显式列入则属 Generator 范围 |
+  | E2E 流测试（跨多 feature / Playwright UI 流）| Evaluator | Evaluator | 端到端验证 |
+  | 压力测试 / 性能测试 | Evaluator | Evaluator | 报告型产出，标 `executor:codex` |
+  | Code review / 安全审计 | Evaluator | Evaluator | 报告型产出，标 `executor:codex` |
+  | 回归测试（修 bug 时同 commit 补）| **Generator** | Evaluator | 强制 |
+
+  **铁律：** Generator 写测试 ≠ 自评。Evaluator 跑测 + L1+L2 + 签收报告 = 评估。这与 harness 铁律 #4「不得自己评估自己代码」一致。
+
 - 不写测试用例文档（`docs/test-cases/`）、不写 signoff 报告（由 Evaluator 负责）
 - 不执行压力测试、code review、安全审计等"产出报告"类任务（由 Codex 负责）
+- **`scripts/*.ts` 实装后 staging 端到端跑一次 dry-run** 见 `framework/harness/database-patterns.md §7`（mock-only 单测不抓 schema 类型不匹配类 bug，必须 prod-shaped 数据下验证）
 
 ## 执行步骤
 

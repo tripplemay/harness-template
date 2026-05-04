@@ -56,6 +56,32 @@
 
 ---
 
+## L2 实测记录（v0.9.9 — BL-031 沉淀）
+
+> 本节由 Evaluator 在签收时填写。staging 浏览器 / SSH 实测的具体行为证据，区别于 L1 静态走查。**有 staging 部署的批次必填**；纯文档 / 纯框架批次可写"无 staging 影响 — N/A"。
+
+| 项 | 证据 |
+|---|---|
+| Staging git_sha == main HEAD | `curl https://staging.kol.guangai.ai/api/health \| jq .git_sha` 输出 = `<sha>` |
+| 端到端流验证 | [描述 Reviewer 走完的真实 UX 流：登录 → 操作 → 观察 / 收件箱 / DB 查询结果] |
+| 关键 invariant | [如 send test 真发出 + Resend providerMessageId / FK 不撞 / count 验证等] |
+| 浏览器手动验（如 UI 类）| [DevTools 截图 / 字段渲染 / 网络面板] |
+
+---
+
+## Ops 副作用记录（v0.9.9 — BL-030/BL-031 沉淀）
+
+> 本节记录批次中**任何角色**（Generator / Evaluator / Planner）在 prod / staging 数据库执行的 SQL ops（包括用户授权的越界 ops）。**无 ops 操作时本节可写"本批次无数据库 ops"**。
+> 来源：BL-030 Planner SQL ops 漏 dual-write 致 BL-031 暴露 FK orphan 后教训沉淀。
+
+| Agent | 阶段 | 操作摘要 | 副作用对齐 | 用户授权 |
+|---|---|---|---|---|
+| [Planner/Reviewer/Generator] | [done/verifying/...] | 例：UPDATE asset SET content=... WHERE source='ai_generated' (15 行) | 同 SQL 跑 dualWriteOnUpdate 等价 UPDATE email_template (15 行) ✓ | 用户对话 [时间戳] 授权 |
+
+**Planner done 阶段必查：** Ops 副作用记录中每条是否含"副作用对齐"列且非空？空 = 复查 mutation 函数所有副作用是否同步执行。
+
+---
+
 ## Harness 说明
 
 本批改动经 Harness 状态机完整流程（planning → building → verifying → reverifying → done）交付。

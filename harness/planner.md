@@ -265,6 +265,58 @@ grep -rn "params.*id" src/app/\[locale\]/\(app\)/<path>/ 2>/dev/null
 
 **来源：** BL-030 F002 spec 写"跳转 /assets/{id}"（项目无 `/assets/[id]/page.tsx`，detail 通过 `/assets?productId=X` 列表页 + 右侧 drawer 选中实现）；Generator 实装链对，但 spec 文字错配 → Reviewer Soft-watch S1。
 
+### 铁律 5：Planner ops 绕业务 mutation 函数前必须列写所有副作用 checklist（v0.9.9 — BL-030 → BL-031 沉淀）
+
+Planner 在 done / hotfix 阶段为不阻塞用户决定"用 SQL ops 替代 mutation 调用"前，**必须 grep 该 mutation 函数内所有 await 调用并列入 ops SQL 一并执行**。不能仅做主表 INSERT/UPDATE。
+
+**典型副作用类型（按域）：**
+
+| 类型 | 示例 | 漏做后果 |
+|---|---|---|
+| Dual-write 镜像 | `dualWriteEmailTemplateOnCreate` | FK orphan → 下游 INSERT 撞 FK 500 |
+| Audit log | `logAudit({action: "asset.generated"})` | 合规 / 计费 缺记录 |
+| Queue push | `queue.add('send-email', ...)` | 异步任务漏触发 |
+| Cache invalidate | `cache.delete(productId)` | 读端看到陈旧数据 |
+| Search index | `meilisearch.update(...)` | 搜索看不到新内容 |
+
+**修订规则：**
+
+```bash
+# Planner 决定 SQL ops 替代 mutation 前必跑：
+grep -nE "await tx\.|await prisma\.|await logAudit|await queue|await cache|await meilisearch|await dualWrite" \
+  src/lib/.../mutations.ts | grep -A0 -B0 "createAsset\|<目标 mutation 名>"
+```
+
+把每条 await 调用对应的副作用以 SQL / 后续脚本形式同 ops 一并执行；不可分批；不可省略 audit log。
+
+**来源：** BL-030 backfill ops Planner 用 SQL 直跑 INSERT into asset 25 行，绕了 createAsset 内 dualWriteEmailTemplateOnCreate → 15 行 ai_generated email 在 email_template 表无镜像 → BL-031 启动 Phase 1 调研发现 email_log.template_id FK orphan 风险。Planner 自查补 SQL 镜像 15 条。BL-032 backfill 严格遵守此铁律走 updateAsset mutation 路径，未再现漏 dual-write。
+
+### 铁律 6：跨角色 ops 必须用户书面授权 + session_notes 记账（v0.9.9 — BL-031 沉淀）
+
+Reviewer / Generator 任一方在批次中执行**不属于本角色域的写操作**（如 Reviewer 跑 SQL ops / Generator 写 signoff / Planner 改产品代码）时，**必须满足 3 项**：
+
+1. **用户书面授权：** 对话中明确"破例授权 X 代办 Y"或同等措辞，不能依据隐式默认
+2. **session_notes 记账：** 当事 agent 在 progress.json `session_notes` 自己条目中明文记录"用户授权 X 在 Y 阶段代办 Z 操作"+ 时间戳 + 操作摘要
+3. **角色身份不变：** 越界 ops 仅本批次本步骤生效，不视为角色切换；当事 agent 仍按原角色后续操作
+
+**反面：** 越界 ops 后忘记 session_notes 记账 → 后续 Planner / 接手 agent 误以为有 process bug，浪费排查时间。
+
+**来源：** BL-031 verifying 阶段 staging 1 行 orphan asset 待镜像 email_template，用户「C1b 破例授权代办 Planner ops」让 Reviewer (CLI as Codex) 跑 SQL 镜像。Reviewer session_notes 记账规范 → Planner done 阶段读到无歧义。同期 BL-031 用户授权 CLI agent 临时担任 Reviewer 角色（项目方向 B 限制 Codex 仅当 evaluator）也属此模式。
+
+### 铁律 7：角色文件多副本一致性（v0.9.9 — BL-032 Generator 角色冲突沉淀）
+
+项目同时存在多份 Generator/Evaluator/Planner 角色定义文件时（如项目根 `./generator.md` + `.auto-memory/role-context/generator.md` + `framework/harness/generator.md` 三份），**Planner 修订任一角色文件时必须 grep 全部副本同 commit 一致更新**。否则 Generator 严格按字面执行会撞硬冲突卡死。
+
+```bash
+# 修订 Generator 角色前必跑
+find . -name 'generator.md' -not -path '*/node_modules/*' -not -path '*/.git/*'
+# 三份同步措辞，差异仅限"项目特定"vs"框架通用"维度
+```
+
+**反面：** BL-032 building 启动 Generator johnsong 识别 `./generator.md` line 10「不写任何测试」与 `.auto-memory/role-context/generator.md`「测试代码由 Generator 提供脚本/调用」直接冲突 → 停工等仲裁，多 1 轮往返。Planner 仲裁后两份同时矩阵化。
+
+**来源：** BL-032 角色冲突 + 历史角色文件演进不同步多次（v0.9.6 时已有 evaluator.md 三份不同步事故）。
+
 ---
 
 ## status = "done" 时的收尾流程

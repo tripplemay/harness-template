@@ -146,12 +146,53 @@ F006 wordcloud 调用频率：每个 KOL 详情页首访 1 次 / cache 7d
 
 ---
 
+## 3. AI 输出 placeholder 规约 + server-side validation 兜底（v0.9.9 — BL-032 沉淀）
+
+### 3.1 坑
+
+KB AI 生成 5 套邮件模板（`generateAiAssets.ts:88-97`），prompt 未指定 placeholder 语法 → claude-haiku-4.5 自然写英文方括号 `[Creator Name]` `[Your Name]` `[KOL Name]` 等共 5 种变体。但应用层 `variable-substitute.ts:25` 替换 regex 仅认 Mustache `/\{\{[a-zA-Z0-9_.]+\}\}/g`。结果：方括号字面 0 替换，发出邮件正文带字面 `[Creator Name]` → 用户报 prod bug。
+
+### 3.2 修订规则（生成式 AI 输出至应用层的 contract）
+
+任何 AI generation pipeline 的输出，**应用层有 token / placeholder / shape 解析**时：
+
+1. **Prompt 必明文约束** — 在 prompt 中显式列出合法 token 集合 + 显式禁用其它形态：
+   ```
+   Use these EXACT Mustache tokens; do not use square brackets [...] or other syntax:
+   - {{kol.name}} for the recipient name
+   - {{product.name}} for the product/game name
+   - ...
+   ```
+2. **Server-side validation 兜底（候选）** — generation 后立即跑：
+   ```ts
+   const tokens = body.match(/\{\{[a-zA-Z0-9_.]+\}\}/g) ?? [];
+   const brackets = body.match(/\[[A-Z][a-zA-Z ]+\]/g) ?? [];
+   if (brackets.length > 0 && tokens.length === 0) {
+     throw new Error("AI output uses bracket placeholders, expected Mustache");
+   }
+   ```
+   失败 → retry 1 次或标 status=failed，避免 broken 内容入库
+3. **Spec 起草必含「输出 contract」段** — Planner 在 spec 中显式列：合法 placeholder / 拒绝形态 / validation 行为
+
+### 3.3 反面
+
+BL-032 backfill 修复了 15 条历史数据 + prompt 修复了未来生成；但 AI 偶尔仍可能不遵循 prompt（claude-haiku-4.5 generation 不确定性，medium-prob 风险），**无 server-side validation 兜底则下次同坑**。
+
+### 3.4 适用范围
+
+- 邮件模板生成（KB / Wizard）
+- 视频脚本生成（如未来加 token 替换）
+- 任何"用户提交内容含 token, 系统替换"模式（如 onboarding 邮件 / 报告导出）
+
+---
+
 ## 来源
 
 - KOLMatrix B5-F006 fixing-5（output shape 漂移；commit 4d1057c）
 - KOLMatrix B5-F006 fixing-6（timeout 5s 紧；commit ee45543）
 - KOLMatrix MVP-internal-demo-prep F C-10 fixing-3（variables contract drift；commit 912fbc7）
-- 用户 2026-05-01 决议：12 条 learnings 全部入 framework
+- KOLMatrix BL-032（v0.9.9 — placeholder 规约 + validation 兜底）
+- 用户 2026-05-01 决议：12 条 learnings 全部入 framework + 用户 2026-05-04 v0.9.9 沉淀决议
 
 ---
 
@@ -160,3 +201,4 @@ F006 wordcloud 调用频率：每个 KOL 详情页首访 1 次 / cache 7d
 | 日期 | 修订 | 来源 |
 |---|---|---|
 | 2026-05-01 | 初版（§1 Action 集成 dry-run + parser 双 shape；§2 timeout 10s + fallback 不可 silent；§ 月预算监控） | KOLMatrix B5 fixing-5/6 + MVP fixing-3 |
+| 2026-05-04 | §3 AI 输出 placeholder 规约 + server-side validation 兜底 | KOLMatrix BL-032 prompt 修复 |

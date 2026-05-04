@@ -229,6 +229,77 @@ return rows;
 
 ---
 
+## 5. 跨表 id 类型一致性（v0.9.9 — BL-031 沉淀）
+
+**坑：** Prisma schema 中 `Product.id` 是 `cuid` 字符串（DB 列实际为 `text`）；`Asset.product_id` 也是 text 实际存 cuid，但 raw SQL 中如果误用 `${productId}::uuid` cast → `42883 operator does not exist text=uuid`。Mock-only 单测无法抓出此 schema-DB 漂移类 bug。
+
+**Generator/Planner 检查清单（跨表 id 引用 raw SQL 时）：**
+
+```bash
+# 验证 Prisma schema 类型注解 vs DB 列实际类型
+grep -A1 "model Asset" prisma/schema.prisma | grep "productId"     # schema 声明
+psql -c "\d asset" | grep product_id                               # DB 实际列类型
+# raw SQL ${value}::TYPE cast 必须匹配 DB 实际列类型，不要按 schema 注解假设
+```
+
+**修订规则：**
+
+- raw SQL `tx.$queryRaw\`... WHERE x = ${value}::TYPE\`` 中**不要假设 cast 类型**，必须先 `\d <table>` 实测
+- Prisma 生成的 query（非 raw）按 schema 类型自动处理，无此坑
+- mock-only 单测验证不到 schema-DB 漂移；必须 staging 端到端跑 `.ts` 脚本（见 §7）
+
+**来源：** BL-031-F003 c1405c7 hotfix（drop ::uuid cast）。BL-030 prod 没暴露因为 scanProducts 当时 RLS 阻塞返 0 跳过此路径；BL-031 修 scanProducts 后才显形。
+
+---
+
+## 6. Silent updateMany 模式 + dualWrite 返回 void（v0.9.9 — BL-032 S3 沉淀）
+
+**模式：** `mutations.ts` 中 `dualWriteEmailTemplateOnUpdate` 用 `tx.emailTemplate.updateMany({ where: { id }, data })`，updateMany 在 0 行命中时**静默返回 count=0**（mutations.ts:148 已注释 "updateMany 返回 count=0 silently — acceptable"）。
+
+**坑（BL-032 S3）：** Asset 端写成功，但 dualWrite 镜像因前批次 SQL ops 漏跑导致 mirror 缺失 → updateMany 静默返 0 → 上层无感知 → 持续漂移。
+
+**修订规则：**
+
+- 任何 `updateMany` 在 dual-write / mirror / cleanup 路径上的应用，**必须显式 stats 日志**：
+
+```ts
+const r = await tx.emailTemplate.updateMany({ where, data });
+console.log(`[dualWrite] mirror updated count=${r.count} expected=1 for asset=${assetId}`);
+if (r.count === 0) console.warn(`[dualWrite] silent miss — mirror may be missing`);
+```
+
+- backfill / migration 脚本必须把 dualWrite 行为纳入 stats 输出（BL-032-F002 脚本以 `mirrorsAttempted` (= updated assets) 替代，因 dualWriteOnUpdate 不返 count；当前最佳）
+
+**长期：** 改 `mutations.ts` 让 dualWrite 函数返回 affected count → 调用方可断言期望值 → 静默失败转显式失败。留 v1.0 候选批次。
+
+**来源：** BL-032 Soft-watch S3。BL-030 ops 漏 dualWriteOnCreate 的 FK orphan 是同模式不同函数。
+
+---
+
+## 7. Generator 实装后 staging 端到端跑 .ts 脚本硬要求（v0.9.9 — BL-031 沉淀）
+
+**坑：** Generator vitest mock fetch / mock prisma 单测通过 ≠ 脚本 prod-shaped 数据下能跑通。BL-031-F003 backfill 脚本本地 mock 测试 6/6 PASS，staging 二跑发现 `${productId}::uuid` cast 撞 42883（asset.product_id 实际是 text）→ 二次 commit c1405c7 修。
+
+**修订规则：**
+
+- 所有 `scripts/*.ts` 脚本在 `executor:generator` 完成后，**必须 staging 端到端跑一次 dry-run**：
+
+  ```bash
+  ssh tripplezhou@staging
+  cd /opt/kolmatrix-staging
+  set -a && source .env.staging && set +a
+  node_modules/.bin/tsx scripts/<your>.ts  # 默认 dry-run
+  ```
+
+- staging dry-run 必须返回非空 stats；若 staging 数据集真的无候选，generator_handoff 必须明文说明"staging 无 fixture 数据，algorithm correctness 由 mock 单测验证"
+- 失败 → 视为 acceptance 不满足，回 fixing；非 verifying 受理范围
+
+**反面：** BL-031-F003 mock-only PASS → CI green → 切 verifying → Reviewer 跑 staging 才发现 cuid bug → c1405c7 二跑修。本可在 building 阶段提前 24h 发现。
+
+**来源：** BL-031-F003 cuid cast bug。BL-032 building 已遵守此规则跑了 staging dry-run（虽 staging 无 fixture）。
+
+---
+
 ## 版本历史
 
 | 日期 | 修订 | 来源 |
@@ -237,3 +308,4 @@ return rows;
 | 2026-04-20 | §2 DB 命名 / 角色 / Grant 与 migration 一致性 | KOLMatrix BI2 DB 命名坑 |
 | 2026-05-01 | §3 Prisma 7+ JSON 列写入需 InputJsonValue cast | KOLMatrix B5-F004/F006 同坑 |
 | 2026-05-04 | §4 RLS 旁路矩阵 + cross-tenant ops 决策树 | KOLMatrix BL-030-F003 backfill scanProducts 0 行（BL-031-F003 hotfix） |
+| 2026-05-04 | §5 跨表 id 类型一致性 / §6 Silent updateMany / §7 staging 端到端跑 .ts 脚本 | KOLMatrix BL-031 cuid cast hotfix + BL-032 S3 |
