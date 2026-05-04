@@ -21,6 +21,23 @@
 
 -->
 
+## [2026-05-04] Planner Kimi — 来源：BL-032 building 启动 Generator 角色冲突反馈
+
+**类型：** 已落地（仲裁后即时改文件）+ framework 沉淀（待用户确认归档）
+
+**内容：** Generator johnsong 启动 BL-032 building 时识别 `./generator.md` line 11「Generator 不写任何测试」字面硬规与 `.auto-memory/role-context/generator.md`「测试代码由 Generator 提供脚本/调用」直接冲突；BL-025/026/027/030/031 实操惯例 100% 与 role-context 一致（每批写大量测试）。Generator 守 generator.md 字面停工等仲裁。Planner 仲裁方案 C：矩阵化分工（单元/集成 = Generator + Evaluator 跑；E2E/压测/code review = Evaluator；回归同 commit 补 = Generator），改 `./generator.md` line 8-12 为 5 行测试类型矩阵 + 「Generator 写测试 ≠ 自评」铁律一致性声明。
+
+**根因：** 角色文件多处独立维护（项目根 `./generator.md` + 共享层 `.auto-memory/role-context/generator.md` + framework 模板 `framework/harness/generator.md`），措辞演进不同步导致硬冲突；Generator 严格按字面执行时被卡。
+
+**建议写入（沉淀）：**
+1. `framework/harness/generator.md` 同步矩阵化（避免新项目 fork 后再次冲突）
+2. `framework/harness/planner.md` 加铁律：「角色文件多处副本时，Planner 修订前 grep 所有副本 + 同 commit 一致更新」（防再次产生跨文件 drift）
+3. v0.9.9 CHANGELOG 标注「Generator 角色测试边界 = 矩阵式」作为标志性变更
+
+**状态：** 已即时仲裁落地（generator.md 已改），sinking 部分待确认（BL-032 done 阶段处理）
+
+---
+
 ## [2026-05-04] Planner Kimi — 来源：BL-030 backfill ops → BL-031 暴露 FK orphan
 
 **类型：** 新坑 + 铁律补充
