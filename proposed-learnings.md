@@ -75,3 +75,47 @@
 **反面案例：** BL-020 F001 spec 写 UUID_RE，Generator pre-impl audit 才发现实为 CUID，触发短格式裁决 #1:A 修订全文。本可在 spec lock 前避免。
 
 **状态：** 待确认（v0.9.11 候选；与本会话已有 3 项合并处理）
+
+---
+
+## [2026-05-05] Reviewer (CLI 临时担任 evaluator) — 来源：BL-020 verifying L1 本机 unit fail / CI PASS 对比
+
+**类型：** 新坑 + 新规律
+
+**内容：**
+
+**新坑：** Node 25.x 引入 native localStorage，但要 `--localstorage-file <path>` flag 才启用持久化路径；无 flag 时 Node 25 启动会 emit `Warning: '--localstorage-file' was provided without a valid path`（误导性 — 实际是 Node 25 native localStorage 占位 detect 与 jsdom 29 的 localStorage shim 互斥触发 fall-through）。结果是 jsdom 环境下 `window.localStorage` 变 `undefined`，所有触及 `window.localStorage.setItem/getItem/clear` 的测试 100% fail，且本地复现明显但 CI（Node 20 LTS）不复现。Reviewer 本次踩到：BL-020 F002 `AiSuggestionsClient.test.tsx` 2 集成 case 本机 fail / CI run 25330969685 全 PASS（Node 20）— 误判风险高。
+
+**新规律：** 项目根缺 `.nvmrc` → 本机 Node 与 CI Node 不一致是 root cause。`vitest.config.ts §testTimeout` 已为 WSL2 慢 fs 加 60s 兜底（v0.9.6 [#1]），但 Node 版本本身未锁。
+
+**建议写入：**
+- 项目根加 `.nvmrc` 内容 `20`（或 `lts/iron`），与 CI `NODE_VERSION: "20"` 对齐
+- `framework/harness/evaluator.md` §15 之后加 §16「L1 本机 Node 版本应与 .nvmrc 一致；不一致时本机 fail 不算反面证据，先核 CI 与 Node 版本一致性。Node 25+ 在 jsdom + window.localStorage 测试中已知 break；Node 22+ 可能影响 jsdom Storage API 兼容性」
+
+**状态：** 待确认（v0.9.11 候选；与本会话已有 4 项合并处理）
+
+---
+
+## [2026-05-05] Reviewer (CLI 临时担任 evaluator) — 来源：BL-020 environment.md staging Redis 字段缺补
+
+**类型：** 模板/记忆补漏
+
+**内容：** F005 期 Generator johnsong 在 staging VM SSH 追加 `REDIS_URL=redis://localhost:6379/2` 到 `.env.staging`（备份 `.env.staging.bak.bl020-f005`），但 `.auto-memory/environment.md` Staging 表格未含 REDIS_URL 字段（prod 表格已有 `Redis 共用实例，db index 1`）。Generator session_notes 已提示 Planner 后续补，但作为提案沉淀以避免下次 staging 部署用相同环境查找。
+
+**建议写入：** `.auto-memory/environment.md` Staging 表格加一行 `Redis 共用 prod Redis 实例，db index 2`，对齐 prod 表格写法（与 aigcgateway 0 / prod 1 / staging 2 现有约定一致）
+
+**状态：** 待确认（由 Planner 在 BL-020 done 阶段消化 + 一并更新 environment.md）
+
+---
+
+## [2026-05-05] Reviewer (CLI 临时担任 evaluator) — 来源：signoff-report.md L2 实测记录章节模板
+
+**类型：** 模板修订
+
+**内容：** `framework/templates/signoff-report.md` §"L2 实测记录" 段当前未明示 RSC server action endpoint 类（如 login form / OAuth callback / mutation 提交）的处理建议。这类 endpoint 走 `Content-Type: text/x-component` + CSRF + RSC payload，curl 不能简洁模拟，常退到"unit + integration + health 联合背书 + prod 灰度浏览器手验"的模式。Reviewer 在 BL-020 F005 rate-limit live probe 处理时已暴露此典型场景。
+
+**建议修改：** `framework/templates/signoff-report.md` 第 64-69 行表格注释加一行：
+
+> 对走 RSC server action 的 endpoint（如 login form / OAuth callback / mutation 提交），L2 live probe 应描述 curl 能否简洁模拟；不能时退到"unit + integration testcontainer + health endpoint 联合背书 + prod 灰度浏览器手验"模式，物理验证作 Soft-watch 入项目状态由用户驱动。
+
+**状态：** 待确认（v0.9.11 候选；与本会话已有 5 项合并处理）
