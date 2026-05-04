@@ -315,3 +315,36 @@ npm run lint           # 3. lint 跑（独立于 prisma client，但同一阶段
 **反面（BL-033 Reviewer 命中）：** Reviewer 接 BL-033 verifying 启动跑 tsc，因前批次 schema 改过 + 本机未跑 prisma generate → 80 errors。`prisma generate` 后立即清空。本可作为 L1 标配前置避免误判。
 
 来源：BL-033 Reviewer signoff §Framework Learnings 新坑。
+
+---
+
+## 16. L1 本机 Node 版本必须与 `.nvmrc` 一致（v0.9.11 — BL-020-F002 沉淀）
+
+**背景：** Node 25.x 引入 native `localStorage`，但要 `--localstorage-file <path>` flag 才启用持久化路径；无 flag 时 jsdom 29 的 `window.localStorage` shim 与 Node 25 native 占位 detect 互斥触发 fall-through，结果 `window.localStorage` 变 `undefined`。所有触及 `window.localStorage.setItem/getItem/clear` 的测试 100% fail，且本地复现明显但 CI（Node 20 LTS）不复现 — Reviewer 误判风险高。
+
+**误报模式：**
+```
+TypeError: window.localStorage.setItem is not a function
+  at AiSuggestionsClient.test.tsx:42
+```
+
+类似错误集中在 jsdom + localStorage 路径，本机 fail / CI Node 20 PASS。
+
+**修订规则（L1 启动前置 + 误判判据）：**
+
+```bash
+# Reviewer / Generator L1 启动必查
+node -v                          # 必须与项目根 .nvmrc 一致
+cat .nvmrc                       # 当前锁 Node 20（lts/iron）
+nvm use                          # 不一致时切换；无 nvm 装 Node 20 LTS
+```
+
+**适用范围：**
+
+- 任何含 jsdom 环境单测 / `window.localStorage` / `window.sessionStorage` 测试的批次
+- Node 22+ 引入 native `Web Storage` API 后均可能触发兼容性新坑
+- 本机 fail 但 CI PASS 的 jsdom 类测试，**先核 Node 版本一致性**，不一致时本机 fail 不算反面证据
+
+**反面（BL-020-F002 命中）：** Reviewer 本机 Node 25.7 + jsdom 29 跑 `AiSuggestionsClient.test.tsx` 2 集成 case fail，CI run 25330969685 Node 20 PASS。验证差异源于 Node 25 native localStorage incompat，不是产品 bug；锁 Soft-watch S4 + 本规则。
+
+**来源：** BL-020-F002 Reviewer L1 本机 unit fail / CI PASS 对比。

@@ -67,6 +67,8 @@
 | 关键 invariant | [如 send test 真发出 + Resend providerMessageId / FK 不撞 / count 验证等] |
 | 浏览器手动验（如 UI 类）| [DevTools 截图 / 字段渲染 / 网络面板] |
 
+> **RSC server action / 不可 curl-simulate 类 endpoint（v0.9.11 — BL-020-F005 沉淀）：** 走 `Content-Type: text/x-component` + CSRF + RSC payload 的 endpoint（如 login form / OAuth callback / mutation 提交）curl 不能简洁模拟。L2 实测时应明示该限制，退到「unit + integration testcontainer + health endpoint 联合背书 + prod 灰度浏览器手验」模式，物理验证作 Soft-watch 入项目状态由用户驱动，不阻塞 done。
+
 ---
 
 ## Ops 副作用记录（v0.9.9 — BL-030/BL-031 沉淀）

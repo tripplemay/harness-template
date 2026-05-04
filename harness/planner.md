@@ -209,6 +209,9 @@ Planner 写 spec，若涉及以下内容，**必须先 Read 对应文件核实**
 | API handler 参数 | Read handler + 调用方 |
 | 现有 schema 字段 | Read schema.prisma 或最新 migration |
 | 枚举值 / 常量 | Read 定义文件 |
+| **regex / id-format / type-check（v0.9.11 新增）** | **Read schema.prisma 对应 model 字段类型注解（`@default(cuid())` / `@default(uuid())` / `@default(nanoid())`）+ grep ≥1 条既有测试 fixture 数据形态印证** |
+
+**反面案例（v0.9.11 新增类）：** BL-020 F001 spec 起草时假设 `productId` 是 UUID（沿袭 audit §3 CR-1 文字描述），未 grep `schema.prisma` → Generator pre-impl audit 反向纠错指出 `Product.id` 实为 `@default(cuid())`，套 UUID_RE 会破 4 调用方 + 5 既有 fixture（25-char CUID）测试全红。Planner 短格式裁决 #1:A 修订全文 + 修订 acceptance regex 为 `/^c[a-z0-9]{24,}$/i`。本可在 spec lock 前 grep schema.prisma 1 次避免。
 
 **规格引用实际代码时必须：**
 - 用 ` ```sql ` / ` ```ts ` 等代码块贴真实片段
@@ -498,3 +501,39 @@ done
 **反面（已避开）：** 直接把 audit 当作"临时批次"塞进状态机，违反 audit 是"全局体检"非"实施任务"的本质，会延迟当前 in-flight 批次。
 
 来源：KOLMatrix `docs/reviews/prod-mvp-readiness-audit-2026-05-04.md`（Claude CLI 独立任务模式 168 行报告，4 池子 18 项阻塞 + 文件:行级精度，accept by 用户 → backlog 19→21 + 2 mini-batch 排期细化）。
+
+---
+
+## Server Action / API route 新增时 spec 必含速率限制条款（v0.9.11 — backend-full-scan-audit 沉淀）
+
+**背景：** KOLMatrix backend-full-scan-2026-05-04 audit（265 行后端全量扫描，5 CRIT + 14 HIGH + 21 MED + 16 LOW）暴露 6 个 server action / API route 全裸无 rate-limit；BL-020 F005 + BL-035 F003 (待开 9 项中) 为同源问题。每类单独修都简单，但跨多个批次发生 = 框架欠 spec 起草检查项。
+
+**Spec 起草规则（任何新建 server action / `app/api/**/route.ts` 时）：**
+
+spec acceptance 必含「rate-limit 条款」，明示 (a) 限速维度 (b) 阈值 (c) 兜底策略 (d) escape hatch。
+
+**默认值矩阵（按 endpoint 性质）：**
+
+| Endpoint 类型 | 限速维度 | 默认阈值 | 兜底 | Escape hatch env var |
+|---|---|---|---|---|
+| 登录 / OTP / 密码重置 | IP | **5 req/min/IP** + 5min block | Redis down → fail-open | `DISABLE_LOGIN_RATELIMIT=true` |
+| Read-only（GET 类查询 / list / detail） | userId | **30 req/min/userId** | Redis down → fail-open | `DISABLE_USER_RATELIMIT=true` |
+| AI 调用类（generate / customize / extract） | tenantId | **10 req/min/tenantId** + 100/day/tenant | Redis down → fail-open | `DISABLE_AI_RATELIMIT=true` |
+| 公开 webhook（POST 接收 3rd party） | IP + HMAC verify | **20 req/min/IP** | Redis down → fail-closed（reject） | 不设 escape（安全敏感） |
+| Mutation（write to user-owned data） | userId | **20 req/min/userId** | Redis down → fail-open | `DISABLE_MUTATION_RATELIMIT=true` |
+
+**Spec 必含段落模板：**
+
+```markdown
+**速率限制（v0.9.11 框架硬要求）：**
+- 维度：[IP / userId / tenantId]
+- 阈值：[N req/period] + [block duration if any]
+- 实装：复用 `src/lib/rate-limit.ts` 已有 `rateLimitLogin(ip)` 模式，添加 `rateLimitX(...)` 函数（同 `rate-limiter-flexible` 包 + Redis store）
+- 兜底：[fail-open / fail-closed]，理由：[业务影响分析]
+- Escape hatch：env var `DISABLE_X_RATELIMIT` (true → short-circuit)，prod 故障应急用
+- Test：≥3 case via Redis testcontainer：连续 N+1 fail / period 后重置 / Redis disconnect 兜底行为
+```
+
+**反面：** prod-mvp audit 之前批次（B5 / BM2 / BL-025 等）创建 server action 时全无 rate-limit 检查，到 BL-020 prod readiness 阶段才用专项批次扫尾，工时 ~5h；本可在原批次 spec 多 5min 写一个段落避免。
+
+**来源：** KOLMatrix `docs/reviews/backend-full-scan-2026-05-04.md` AUTH-H1 + API-H1（6 endpoint 全裸列表）+ BL-020-F005 (login 5/min) + BL-035-F003 (AI 6 endpoint rate-limit) 同源问题归并。

@@ -300,6 +300,62 @@ if (r.count === 0) console.warn(`[dualWrite] silent miss — mirror may be missi
 
 ---
 
+## 8. Migration 引入新表必查 RLS policy 默认 enabled（v0.9.11 — backend-full-scan-audit 沉淀）
+
+**坑：** backend-full-scan-2026-05-04 audit DB-CRIT-1 暴露 `audit_log` + `event_log` 两张表 migration 引入时未配 RLS policy → 全裸 SELECT 跨租户读漏洞。复盘 BL-005 / BL-007 等历史批次也漏过同模式。
+
+**Planner / Generator 检查清单（任何新 prisma migration 创建 table 时）：**
+
+```bash
+# 起草 migration 后跑：
+grep -l 'CREATE TABLE' prisma/migrations/*/migration.sql | head -5
+# 任意新 CREATE TABLE 必须同 migration 含：
+# 1. ENABLE ROW LEVEL SECURITY
+# 2. CREATE POLICY ... USING (...)
+grep -A2 'CREATE TABLE' prisma/migrations/<new>/migration.sql
+```
+
+**默认 RLS policy 模板（适用 99% 业务表）：**
+
+```sql
+ALTER TABLE "<table>" ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "<table>_tenant_isolation" ON "<table>"
+  USING (
+    tenant_id IS NULL
+    OR tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid
+  );
+```
+
+兼容 §1 NULLIF 兜底约定 + 无 tenant_id 列的 cross-tenant 元数据表不适用。
+
+**例外白名单（不需 RLS policy）：**
+
+| 表 | 理由 |
+|---|---|
+| `tenant` | 无 tenant_id 列；credentials auth 流的 lookup 表 |
+| `user` | 已有 `user_isolation` policy 含 platform_admin 旁路（详见 §4 旁路矩阵） |
+| `_prisma_migrations` | Prisma 内部表，superuser 专用 |
+
+**新表落入白名单的判据：** 表无 tenant_id 列且不存任何 tenant-specific data。否则一律走默认模板。
+
+**Spec 起草必含段落（任何新建 table 的 migration）：**
+
+```markdown
+**RLS 策略（v0.9.11 框架硬要求）：**
+- 表：`<new_table>`
+- 列：含 / 不含 `tenant_id` 列
+- Policy：`<table>_tenant_isolation`（默认模板复用）
+- 验证：`tests/integration/<table>-rls.test.ts` ≥2 case：tenant A 写 / tenant B 读返 0
+- 例外（如适用）：标注白名单理由
+```
+
+**反面：** `audit_log` 表 BL-005 引入时未配 RLS，prod 跨 tenant SELECT 暴露 N 月；`event_log` 同模式。BL-034 (本批次) 收尾时一并修补。
+
+**来源：** KOLMatrix `docs/reviews/backend-full-scan-2026-05-04.md` DB-CRIT-1 / DB-H1。BL-005 (audit_log) + BL-007 (event_log) 历史漏洞溯源。
+
+---
+
 ## 版本历史
 
 | 日期 | 修订 | 来源 |
@@ -309,3 +365,4 @@ if (r.count === 0) console.warn(`[dualWrite] silent miss — mirror may be missi
 | 2026-05-01 | §3 Prisma 7+ JSON 列写入需 InputJsonValue cast | KOLMatrix B5-F004/F006 同坑 |
 | 2026-05-04 | §4 RLS 旁路矩阵 + cross-tenant ops 决策树 | KOLMatrix BL-030-F003 backfill scanProducts 0 行（BL-031-F003 hotfix） |
 | 2026-05-04 | §5 跨表 id 类型一致性 / §6 Silent updateMany / §7 staging 端到端跑 .ts 脚本 | KOLMatrix BL-031 cuid cast hotfix + BL-032 S3 |
+| 2026-05-05 | §8 Migration 引入新表必查 RLS policy 默认 enabled | KOLMatrix backend-full-scan-2026-05-04 audit DB-CRIT-1 |

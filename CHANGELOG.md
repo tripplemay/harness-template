@@ -5,6 +5,31 @@
 
 ---
 
+## v0.9.11 — 2026-05-05（BL-020 + backend-full-scan-audit 合并沉淀，5 条 learnings）
+
+**来源批次：**
+- BL-020-frontend-security-hardening-and-trivial-ui（前端 6 安全 + 2 UI 修复 mini-batch，8/8 first-round PASS @ ca5515b fix_rounds=0）
+- KOLMatrix `docs/reviews/backend-full-scan-2026-05-04.md`（Claude CLI 独立任务模式 265 行后端全量扫描报告，5 CRIT + 14 HIGH + 21 MED + 16 LOW）
+
+**触发原因：**
+- BL-020-F001 Planner 起草 spec 时假设 productId 是 UUID（沿袭 audit §3 CR-1 文字描述），未 grep schema.prisma → Generator pre-impl audit 反向纠错指出 `Product.id` 实为 `@default(cuid())`，套 UUID_RE 会破 4 调用方 + 5 既有 fixture（25-char CUID）测试全红。Planner 短格式裁决 #1:A 修订全文。v0.9.9 铁律 1 现行检查矩阵未列 regex / id-format / type-check 类
+- BL-020-F002 Reviewer L1 本机 Node 25.7 + jsdom 29 跑 `AiSuggestionsClient.test.tsx` 2 集成 case fail / CI run 25330969685 Node 20 PASS — 验证差异源于 Node 25 native localStorage incompat。项目根缺 `.nvmrc` → 本机 Node 与 CI Node 不一致
+- BL-020-F005 rate-limit live probe 处理时暴露：RSC server action endpoint（如 login form / OAuth callback / mutation 提交）走 `Content-Type: text/x-component` + CSRF + RSC payload，curl 不能简洁模拟，常退到「unit + integration + health 联合背书 + prod 灰度浏览器手验」模式 — signoff 模板未明示
+- BL-020-F005 Generator 在 staging VM SSH 追加 `REDIS_URL` 到 `.env.staging`，但 `.auto-memory/environment.md` Staging 表格未含 REDIS_URL 字段 — 记忆补漏
+- backend-full-scan audit 三类同源问题暴露：(1) 6 个 server action / API route 全裸无 rate-limit；(2) audit_log + event_log 两张表 migration 引入时漏 RLS policy；(3) 9 处 AI 调用全无 max_tokens + 4 处用户输入裸拼 prompt — 每类同源问题单独修都简单，但全跨多个批次发生 = 框架欠 spec 起草检查项
+
+**变更：**
+- 修改 `framework/harness/planner.md` 铁律 1 检查矩阵：新增 "regex / id-format / type-check（v0.9.11 新增）"行 — Read schema.prisma 类型注解 + grep ≥1 条既有 fixture 印证 + BL-020 F001 反面案例段
+- 新增 `framework/harness/planner.md` §"Server Action / API route 新增时 spec 必含速率限制条款" — 默认值矩阵（5 类 endpoint）+ Spec 必含段落模板 + 反面案例
+- 新增 `framework/harness/database-patterns.md §8 "Migration 引入新表必查 RLS policy 默认 enabled"` — Planner / Generator 检查清单 + 默认 RLS policy 模板 + 例外白名单 + Spec 起草必含段落 + 历史漏洞溯源
+- 新增 `framework/harness/ai-action-contract.md §4 "AI 调用必含 max_tokens + 用户输入必用 XML tag 包裹"` — max_tokens 必传规则（5 类用例矩阵）+ XML tag 包裹防 prompt injection（适用清单）+ Spec / Generator checklist + 反面案例
+- 新增 `framework/harness/evaluator.md §16 "L1 本机 Node 版本必须与 .nvmrc 一致"` — Node 25 native localStorage 与 jsdom 29 互斥新坑 + L1 启动前置 + 误判判据
+- 新增项目根 `.nvmrc`（内容 `20`，与 CI `NODE_VERSION: "20"` 对齐）
+- 修改 `framework/templates/signoff-report.md` L2 实测记录段：加注 RSC server action / 不可 curl-simulate 类 endpoint 处理建议（退到联合背书 + 灰度手验模式）
+- 修改 `.auto-memory/environment.md` Staging 表格 Redis 行：加 `.env.staging` 必含 `REDIS_URL` + BL-020-F005 部署落地参考
+
+---
+
 ## v0.9.10 — 2026-05-04（BL-033 + prod-mvp-readiness-audit 合并沉淀，3 条 learnings）
 
 **来源批次：**
