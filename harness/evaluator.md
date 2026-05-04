@@ -278,3 +278,40 @@ git diff --name-only <staging-sha>..HEAD
 **Reviewer 验收：** 看到 `void logAudit` + integration test 直接 `expect(audits)` 同时存在 → 直接标 PARTIAL（race condition 风险），要求 Generator 选 (A) 或 (B) 之一显式声明。
 
 来源：BL-025 F004 CI flaky `kol-profile.test.ts` + framework CHANGELOG v0.9.6 [#7]。
+
+---
+
+## 15. L1 本机 tsc 跑前必先 `prisma generate`（v0.9.10 — BL-033 沉淀）
+
+**背景：** Reviewer L1 跑 `npx tsc --noEmit` 时如本机 prisma client 在最近 schema migration 后未重生，会出现 80+ "Property 'asset' does not exist on PrismaClient" 误报。看似 in-flight 批次引入实际是本地环境状态。
+
+**误报模式：**
+```
+src/app/[locale]/(app)/assets/actions.ts:142:23 - error TS2339:
+Property 'asset' does not exist on type 'PrismaClient<...>'.
+```
+
+类似错误 80+ 行但真实代码完全正确。Reviewer 误判为"批次引入"将导致：
+
+1. Reviewer 拒绝接收，写 evaluator_feedback "TypeScript 80 errors"
+2. Generator 困惑 "本地 npm test 全绿 + CI 8/8 success 怎么 tsc 80 errors"
+3. 浪费 1 轮排查时间发现是 prisma client 未生成
+
+**修订规则（L1 标配前置命令，顺序固定）：**
+
+```bash
+# Reviewer L1 启动必跑
+npx prisma generate    # 1. 重生 prisma client（30s）
+npx tsc --noEmit       # 2. 然后跑 tsc（确保读最新 client types）
+npm run lint           # 3. lint 跑（独立于 prisma client，但同一阶段一起跑）
+```
+
+**适用范围：**
+
+- 任何含 schema.prisma 改动的批次（BL-025/BL-030/F004 等）
+- Reviewer 切到新 worktree 或 git pull 含 migration 后首跑
+- CI 不受影响（CI 在 npm ci 后自动跑 postinstall hook 触发 prisma generate）
+
+**反面（BL-033 Reviewer 命中）：** Reviewer 接 BL-033 verifying 启动跑 tsc，因前批次 schema 改过 + 本机未跑 prisma generate → 80 errors。`prisma generate` 后立即清空。本可作为 L1 标配前置避免误判。
+
+来源：BL-033 Reviewer signoff §Framework Learnings 新坑。

@@ -454,3 +454,47 @@ done
 **反面案例：** BL-025 spec drafted-complete v1 仅写"参考 design-draft/BL-025-asset-library/variant-a-296k/"，§2.2/2.3/2.4 全缺。用户 challenge → Planner 加 §F004.A/B/C 三段（19 不得简化 + 4 不得新增 + 3 新公共组件 + visual baseline 4 个）→ 才进 building。如无 challenge，Generator 会以"自由发挥"模式做，Reviewer L1 grep 反范式时大批量 FAIL。
 
 来源：BL-025 spec drafting + framework CHANGELOG v0.9.6 [#5]。配套见 `ui-fidelity-guardrail.md` §2 顶部强制声明。
+
+---
+
+## i18n 命名空间扩展类 spec 起草必含双门检查（v0.9.10 — BL-033 沉淀）
+
+**适用场景：** 批次涉及**新增 messages/{locale}.json 命名空间**或**已有命名空间扩展 ≥ 5 个 keys**。
+
+**spec 必含 §"D-i18n: i18n 命名空间扩展计划" 段** — 详见 `framework/harness/i18n-namespace-add-checklist.md`。核心两条：
+
+1. **i18n CI locale-coverage 守门 — 行业词 allowlist：** 命名空间含英文行业惯用词（KOL / AI / CPI / ROI 等）的 path 必须列入 spec，Generator 同 commit 修订 CI 守门 `KEEP_AS_EN_PATHS`
+2. **i18n CI placeholders 守门 — ICU plural shape parity：** 含 `{count, plural, ...}` 的 keys 在 spec §schema 段标注 "ICU plural shape required in all 5 languages"，CJK 语言用 `{count, plural, one {...} other {...}}` 包裹（同文本但形状必填）
+
+**反面：** BL-033-F004 spec §D4 列 schema 但未提示双门 → Generator 实装首推 CI 25321942649 红 → 加 commit e2c1832 修。本可在 spec lock 前预防。
+
+来源：BL-033 Reviewer signoff §Framework Learnings + Generator session_notes 提案。
+
+---
+
+## 上线前 audit 触发条件（v0.9.10 — KOLMatrix prod-mvp-readiness-audit-2026-05-04 沉淀）
+
+**Planner 旁路任务（不入状态机批次），满足以下任一即跑：**
+
+| 触发条件 | 频次 |
+|---|---|
+| MVP 邀请第一批种子用户前 | 每个里程碑 1 次 |
+| 真客户对外发布前 | 每次发布前 1 次 |
+| 1+ sprint 没做安全 / 完整性审计 + 连续工作日 ≥ 5 | 自动周期 |
+| 用户主动请求 | 任意时刻 |
+
+**模板：** `framework/templates/prod-launch-audit-template.md`（v0.9.10 沉淀，6 章节 + 6 维度 checklist + 池子 A/B/C/D 分类）
+
+**报告归档：** `docs/reviews/prod-mvp-readiness-audit-YYYY-MM-DD.md`
+
+**用户接收后 Planner 后续动作（5 项）：**
+
+1. **backlog.json 增补 audit 文件:行明细** — 在已有 BL-XXX descriptions 加详尽段（如 BL-020 加 H-S1/H-S2/H-S3 文件:行 + UI 修法）
+2. **新增 BL-NNN 条目** — D1/D2 等不在 backlog 的 PRD 偏差
+3. **environment.md 更正** — 如 prod DB 状态描述漂移
+4. **proposed-learnings.md 加候选** — audit 模板修订 / 新规律
+5. **不动当前 in-flight 批次** — 不打断 Generator
+
+**反面（已避开）：** 直接把 audit 当作"临时批次"塞进状态机，违反 audit 是"全局体检"非"实施任务"的本质，会延迟当前 in-flight 批次。
+
+来源：KOLMatrix `docs/reviews/prod-mvp-readiness-audit-2026-05-04.md`（Claude CLI 独立任务模式 168 行报告，4 池子 18 项阻塞 + 文件:行级精度，accept by 用户 → backlog 19→21 + 2 mini-batch 排期细化）。

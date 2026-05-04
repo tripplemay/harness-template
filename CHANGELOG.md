@@ -5,6 +5,25 @@
 
 ---
 
+## v0.9.10 — 2026-05-04（BL-033 + prod-mvp-readiness-audit 合并沉淀，3 条 learnings）
+
+**来源批次：**
+- BL-033-quality-followups-and-assets-i18n（Checkbox 视觉 + KB pipeline + /assets i18n，4/4 features Reviewer 首轮 PASS fix_rounds=0）
+- KOLMatrix `docs/reviews/prod-mvp-readiness-audit-2026-05-04.md`（Claude CLI 独立任务模式 168 行体检报告）
+
+**触发原因：**
+- BL-033-F004 i18n 命名空间扩展首推 CI 25321942649 红，i18n 双门同时触发（locale-coverage 抓 KOL/AI 行业惯用词在 zh/ja/ko 与 en 字面一致 + placeholders 抓 productAssetCount/summaryMiddle 在 zh/ja/ko 缺 ICU plural shape parity）。BL-014/BL-025 因都已预处理过未触发，BL-033 首次踩双门 — 框架欠 spec 起草 checklist
+- BL-033 Reviewer 启动跑 tsc 出现 80 "Property 'asset' does not exist on PrismaClient" 误报（本机未跑 prisma generate），看似批次引入实际是本地环境状态 — 框架欠 L1 标配前置命令
+- KOLMatrix prod-mvp-readiness-audit 168 行报告价值：(1) 比常规 Reviewer signoff 范围广，跨多批次结论 + PRD spec 对齐；(2) 锁文件:行可直接转 backlog 条目；(3) 用户视角 vs 工程内部视角双轨判断 — 框架欠 prod 上线前 audit 模板化 + 触发规则
+
+**变更：**
+- 修改 `framework/harness/planner.md`：新增 §"i18n 命名空间扩展类 spec 起草必含双门检查"（v0.9.10 — BL-033 沉淀）+ §"上线前 audit 触发条件"（v0.9.10 — prod-mvp-readiness-audit 沉淀）
+- 修改 `framework/harness/evaluator.md`：新增 §15 "L1 本机 tsc 跑前必先 prisma generate"（顺序固定的 3 步前置命令）
+- 新增 `framework/harness/i18n-namespace-add-checklist.md`：i18n 命名空间新增 spec checklist（CI 双门 locale-coverage + placeholders ICU plural shape parity 详解 + 翻译质量分级标记 + 命名规约 + spec 模板段 + Reviewer L2 验收 checklist）
+- 新增 `framework/templates/prod-launch-audit-template.md`：prod 上线前体检报告模板（6 章节 + 4 池子分类 + DoD 终态对照 + 推荐执行顺序 + 风险提示 + 模板使用说明）
+
+---
+
 ## v0.9.9 — 2026-05-04（BL-030/BL-031/BL-032 三批合并沉淀，8 条 learnings）
 
 **来源批次：**
