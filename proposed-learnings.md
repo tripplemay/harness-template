@@ -51,3 +51,27 @@
    - 来源：BL-034 F005 (CRIT-5) audit；audit 列 9 处无 max_tokens + 4 处 prompt-injection 暴露面
 
 **状态：** 待确认（合并入 v0.9.11 候选；BL-034 done 阶段或 BL-035 done 阶段处理）
+
+---
+
+## [2026-05-05] Planner Kimi — 来源：BL-020 F001 pre-impl audit 反向纠错
+
+**类型：** 铁律强化
+
+**内容：** Planner 起草 BL-020 spec §F001 时假设 productId 是 UUID（沿袭 audit §3 CR-1 描述），但 Product.id 实为 CUID（@default(cuid())）。Generator johnsong pre-impl audit (`docs/specs/BL-020-F001-audit-cuid-vs-uuid.md`) 反向纠错：直接套 UUID_RE 会破 4 调用方 + 5 既有测试 case 全红。Planner 自审违反 v0.9.9 铁律 1「spec 涉及具体代码细节时必须核查源码」 — 当时只看了 audit 报告字面，未 grep schema.prisma 印证。
+
+**根因：** v0.9.9 铁律 1 现行表述只覆盖 "函数签名 / API handler 参数 / schema 字段 / 枚举常量" 4 类，**未列入 regex / id-format / type-check 类**。这 3 类同样需要 schema/fixture 印证才能正确写 spec。
+
+**建议写入：** `framework/harness/planner.md` §"Planner 铁律 1：spec 涉及具体代码细节时必须核查源码"中扩充检查矩阵：
+
+| 内容 | 核查动作（既有） | 核查动作（新增） |
+|---|---|---|
+| 函数签名（参数/返回/异常）| Read migration + 所有调用点确认 | — |
+| API handler 参数 | Read handler + 调用方 | — |
+| 现有 schema 字段 | Read schema.prisma 或最新 migration | — |
+| 枚举值 / 常量 | Read 定义文件 | — |
+| **regex / id-format / type-check（v0.9.11 新增）** | — | **Read schema.prisma 对应 model 字段类型注解（@default cuid/uuid/nanoid）+ grep 1 条既有测试 fixture 数据形态印证** |
+
+**反面案例：** BL-020 F001 spec 写 UUID_RE，Generator pre-impl audit 才发现实为 CUID，触发短格式裁决 #1:A 修订全文。本可在 spec lock 前避免。
+
+**状态：** 待确认（v0.9.11 候选；与本会话已有 3 项合并处理）
