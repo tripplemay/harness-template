@@ -5,6 +5,21 @@
 
 ---
 
+## v0.9.13 — 2026-05-06（BL-024 沉淀，2 条 learnings）
+
+**来源批次：**
+- BL-024-ghost-controls-cleanup（B4 ghost-controls 实装 mini-batch + F006 retroactive hotfix，6/6 first-round PASS @ eacbbbb fix_rounds=0）
+
+**触发原因：**
+- BL-024 prod redeploy ops 准备阶段（2026-05-05 23:00）Planner johnsong 实地核查 deploy-prod.sh 注释「Reads KOLMATRIX_APP_PASSWORD via the SSH workflow's `set -a; source .env.production; set +a` (added in the GH Actions step)」与 deploy-prod.yml script 块实际内容对比才发现 — BL-034 F001 spec acceptance 已 done @ dbbfbb3 但漏了同 commit 改 yml 桥接，导致 ALTER ROLE 段 silent skip 1+ 周，prod kolmatrix_app 角色仍用弱密码（CRIT-1 fix 实际未在 prod 生效）。BL-024 F006 retroactive hotfix（commit eacbbbb）补 yml 桥接。Generator 在 generator_handoff 提案此规律入框架
+- Planner Q2 ops（2026-05-05 23:30）执行 BL-035 F013 aigcgateway 服务端协调时发现 `mcp__aigc-gateway create_action_version` schema 仅含 messages/variables/changelog/set_active，**完全无 max_tokens 字段暴露**。`update_action` 也仅含 name/description/model。导致 v0.9.11 §4 max_tokens 矩阵 dogfood 无法通过 mcp 完整自动化。BL-035 F013 + BL-024 Q2 ops 共 12 次 max_tokens 推延 Soft-watch — 框架欠明文「mcp 不可达必含手工待办」+ 长期跨项目 issue
+
+**变更：**
+- 修改 `framework/harness/deploy-patterns.md`：§5 后追加 §5.1「spec acceptance 改 deploy-script 时同 commit 必须改对应 yml workflow」（含 Planner spec lock checklist + Generator 实装 checklist + Reviewer L2 deploy log warning 抓取强制 + BL-034 F001 → BL-024 F006 实战反面案例）
+- 修改 `framework/harness/ai-action-contract.md`：§4 后追加 §4.7「mcp 自动化可达性」（mcp 字段范围矩阵 + 短期 KOLMatrix 端 spec 注解 + 长期跨项目 issue 3 项 + 清理触发条件 + 12 次推延实战数据）
+
+---
+
 ## v0.9.12 — 2026-05-05（BL-034 沉淀，3 条 learnings）
 
 **来源批次：**

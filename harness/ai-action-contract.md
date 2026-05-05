@@ -274,6 +274,31 @@ const prompt = `Generate marketing email targeting <USER_KOL_NAME>${escapeForXml
 
 KOLMatrix `docs/reviews/backend-full-scan-2026-05-04.md` AI-CRIT-5 + AI-H5；BL-034 收尾批次实施。Anthropic / OpenAI prompt-injection 业界共识做法（XML tag + untrusted-data 声明）。
 
+### 4.7 mcp 自动化可达性（v0.9.13 — BL-024 Q2 ops + BL-035 F013 沉淀）
+
+**截至 2026-05-06，mcp__aigc-gateway 工具集对 `max_tokens` 字段不暴露：**
+
+| Tool | 字段范围 | max_tokens 可达？ |
+|---|---|---|
+| `create_action_version` | messages / variables / changelog / set_active | ❌ |
+| `update_action` | name / description / model | ❌ |
+| `get_action_detail` | activeVersion (id / versionNumber / messages / variables / changelog / createdAt) — **不含 maxTokens 字段** | ❌（无法读取目标值验证） |
+
+**后果：** v0.9.11 §4 max_tokens 矩阵 dogfood **仅能通过 aigcgateway Dashboard UI 手工设**。spec 起草时 Planner 不应假设 mcp 自动化全覆盖 §4 矩阵；max_tokens 部分必须列入 user 手工待办（spec §6.1）+ Soft-watch 兜底（与 BL-035 F013 / BL-024 Q2 ops 同处理）。
+
+**实战数据（共 12 次 max_tokens 推延 Soft-watch）：** BL-035 F013 6 个 Action + BL-024 Q2 ops 6 个 Action（实际是同一组 6 Action 在两个批次中两次推延 max_tokens 设到 UI），系统欠 mcp 暴露字段。
+
+**短期（KOLMatrix 端）：** spec 起草 max_tokens 类条目必含「**mcp 不可达 — 推 user 手工待办**」注解；不再尝试 mcp 自动化 max_tokens。
+
+**长期（跨项目）：** 给 aigcgateway 项目（独立项目，非 KOLMatrix 范围）报 issue：
+1. `create_action_version` 应接受 `max_tokens` 参数
+2. `update_action` 应接受 `max_tokens` 参数
+3. `get_action_detail` 返回 `activeVersion.maxTokens` 字段以便 dogfood 验证「目标值已设」
+
+**清理触发条件：** aigcgateway 暴露字段后回头清理 6+ Action 历史 Soft-watch + 移除本节注解（v0.9.X+1 沉淀）。
+
+**来源：** KOLMatrix BL-035 F013 (2026-05-05) + BL-024 Q2 ops (2026-05-05 23:30) 实战 12 次 max_tokens 推延。Planner johnsong 在 BL-024 generator_handoff 提案 + 用户 2026-05-06 全 Accept（v0.9.13 候选 #2）。
+
 ---
 
 ## 来源
@@ -294,3 +319,4 @@ KOLMatrix `docs/reviews/backend-full-scan-2026-05-04.md` AI-CRIT-5 + AI-H5；BL-
 | 2026-05-01 | 初版（§1 Action 集成 dry-run + parser 双 shape；§2 timeout 10s + fallback 不可 silent；§ 月预算监控） | KOLMatrix B5 fixing-5/6 + MVP fixing-3 |
 | 2026-05-04 | §3 AI 输出 placeholder 规约 + server-side validation 兜底 | KOLMatrix BL-032 prompt 修复 |
 | 2026-05-05 | §4 AI 调用必含 max_tokens + 用户输入必用 XML tag 包裹 | KOLMatrix backend-full-scan-2026-05-04 audit AI-CRIT-5 + AI-H5 |
+| 2026-05-06 | §4.7 mcp 自动化可达性（v0.9.13，max_tokens 字段 mcp 不可达 → 短期 spec 注解 + 长期跨项目 issue）| KOLMatrix BL-035 F013 + BL-024 Q2 ops 共 12 次 max_tokens 推延 Soft-watch |

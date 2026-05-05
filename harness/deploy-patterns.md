@@ -364,6 +364,41 @@ echo "✅ git_sha verified: $ACTUAL_SHA"
 
 ---
 
+### 5.1 spec acceptance 改 deploy-script 时同 commit 必须改对应 yml workflow（v0.9.13 — BL-024-F006 retroactive 沉淀）
+
+**坑：** BL-034 F001 spec acceptance 已 done @ dbbfbb3（deploy-prod.sh 加 ALTER ROLE 段 line 71-81）但漏了同 commit 改 `.github/workflows/deploy-prod.yml` script 块加 `set -a; source .env.production; set +a` 桥接 → GH Actions Run 时 `KOLMATRIX_APP_PASSWORD` env var 不会 export 到 shell 环境 → ALTER ROLE 段 silent skip → prod kolmatrix_app 角色实际仍用 init migration 字面 `'kolmatrix_app'` 弱密码（**CRIT-1 fix 未在 prod 生效 1+ 周**）。
+
+Planner johnsong 在 BL-024 prod redeploy ops 准备阶段（2026-05-05 23:00）实地核查 deploy-prod.sh 注释「Reads KOLMATRIX_APP_PASSWORD from .env.production via the SSH workflow's `set -a; source .env.production; set +a` (added in the GH Actions step)」与 deploy-prod.yml script 块实际内容对比才发现 — 注释明示但 yml 实装漏。BL-024 F006 retroactive hotfix（commit eacbbbb）补 yml 桥接 + 同步修 deploy-staging.yml。
+
+**根因：** spec 起草时 Planner / Generator 对「deploy 链」的端到端理解仅停在 deploy-script 层，未明确「shell env 来源 = yml 桥接」这一上下游关系。注释明示但实装漏 → silent skip 1+ 周不被发现。
+
+**修订规则：**
+
+1. **任何修改 `scripts/deploy-*.sh` / `infrastructure/deploy-*.sh` 的 spec feature acceptance**，必须同 commit 改对应 `.github/workflows/deploy-*.yml`（如 deploy-script 引入新的 env var 依赖 → yml script 块必须 `set -a; source .env*; set +a`）
+
+2. **Planner spec lock 前 checklist：**
+   ```bash
+   # 任意 spec feature 涉及 deploy-script 改动时，spec lock 前跑：
+   # 检查同 commit 是否 yml 配套
+   git log --name-only -1 | grep -E 'scripts/deploy|infrastructure/deploy|\.github/workflows/deploy'
+   # deploy-script 改动数 > 0 + yml 改动数 = 0 → 立即修订 spec acceptance 加 yml 配套段落
+   ```
+
+3. **Generator 实装 checklist：** deploy-script 改动需 yml 桥接同 PR；不分 commit 推（避免一边修一边漏）
+
+4. **Reviewer L2 验收 checklist（强制）：** staging deploy 不仅看 health endpoint，还要**抓 deploy log warning**：
+   ```bash
+   # 验 staging deploy 后，gh run view <RUN_ID> --log | grep -E '⚠️|skipping|unset|warning'
+   # 任意 warning 命中 → 立即标 PARTIAL 切 fixing；deploy 看似 success 但 silent skip = 实质 fail
+   ```
+   BL-034 F001 silent skip 持续 1+ 周未发现的根因正是 Reviewer 没看 deploy log 中 "⚠️ KOLMATRIX_APP_PASSWORD unset — skipping" 这行 warning。
+
+**反面案例（已落 BL-024 F006 retroactive hotfix）：** BL-034 F001 spec acceptance 写 ALTER ROLE 段 done @ dbbfbb3 但 prod CRIT-1 实际未修 1+ 周（直至 2026-05-05 Planner 实地核查）。本可在 BL-034 F001 spec lock 时加「同 commit 改 yml」检查项 + Reviewer L2 deploy log warning 抓取避免。
+
+**来源：** KOLMatrix BL-024-F006 retroactive hotfix（commit eacbbbb，BL-034 F001 root cause 1+ 周后实地核查发现）。Generator Kimi 在 BL-024 generator_handoff 提案 + Planner johnsong 实地核查 + 用户 2026-05-06 全 Accept（v0.9.13 候选 #1）。
+
+---
+
 ## 来源
 
 - KOLMatrix BI2-F002 两轮重裁决 + Round 2 实测证伪（2026-04-20）
@@ -384,3 +419,4 @@ echo "✅ git_sha verified: $ACTUAL_SHA"
 | 2026-04-23 | §2 VPS working tree 卫生 + artifact in-git 强制（3 条规律 + Reviewer checklist）| KOLMatrix BI3-F005 签收漏 + BAux1 deploy 失败 |
 | 2026-05-01 | §1 扩展 PM2 6.0.14 env_file anti-pattern；§3 完整链 checklist（schema + enrich + SHA 对齐边界）；§4 Visual baseline regen 注意事项 | KOLMatrix B5 7 轮 fixing + MVP-internal-demo-prep 3 轮 fixing 累积 |
 | 2026-05-05 | §5 新 auth-gated endpoint 配套 deploy script（v0.9.12，含 graceful-degrade 模板 + bash 旧 bytecode 重启 deploy run）| KOLMatrix BL-034 F007 deploy-staging.sh 死循环 + bash bytecode 双坑 |
+| 2026-05-06 | §5.1 spec acceptance 改 deploy-script 时同 commit 必须改对应 yml workflow（v0.9.13，含 Planner spec lock checklist + Generator 实装 checklist + Reviewer L2 deploy log warning 抓取强制）| KOLMatrix BL-024-F006 retroactive hotfix（BL-034 F001 root cause 1+ 周后实地核查发现）|
