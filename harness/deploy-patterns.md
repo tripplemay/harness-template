@@ -301,6 +301,69 @@ KOLMatrix B5 F006 case：
 
 ---
 
+## 5. 新 auth-gated endpoint 配套 deploy script（v0.9.12 — BL-034 F007 沉淀）
+
+### 5.1 坑（双坑组合）
+
+BL-034 F007 把 `/api/health` `git_sha` + `version` 字段加 token guard（`HEALTH_DETAIL_TOKEN` env 守卫）— 默认无 token 不返这两字段。但 deploy-staging.sh 既有验证段严格 grep `git_sha` 字段：
+
+```bash
+# deploy-staging.sh （F007 之前 OK，F007 之后死循环）
+ACTUAL_SHA=$(curl -s "$HEALTH_URL" | jq -r .git_sha)
+if [ "$ACTUAL_SHA" != "$EXPECTED_SHA" ]; then
+  echo "SHA mismatch"; exit 1
+fi
+```
+
+**死循环：** F007 commit 推 staging → deploy-staging.sh 跑 → curl health 返 `null`（token 未配）→ ACTUAL_SHA="null" ≠ EXPECTED_SHA → exit 1 → deploy 失败 → 用户无法落地 `HEALTH_DETAIL_TOKEN` env → **下次 deploy 仍 fail**（先有鸡先有蛋）。
+
+**第二坑（bash 旧 bytecode）：** Generator 在 fix-round 1 同步加 graceful-degrade 路径（commit `07a6db4`：token 未配置时 warning + skip strict check），git pull 更新文件后第二次 deploy 仍 fail — 因为 bash 进程已读取旧 bytecode；第三次 deploy 重启进程才生效。
+
+### 5.2 修订规则
+
+**新增 default-deny 健康检查 endpoint（任何返回字段加 auth gate）时同 commit 改 deploy script，否则触发死循环：**
+
+1. **Spec 起草必含子项：** 「本 feature 改动 health endpoint 字段返回行为时，同 commit 修 `scripts/deploy-*.sh` 加 graceful-degrade 路径（auth env 未配时 warning 而非 exit 1）」
+2. **Generator 实装：** auth-gated endpoint 改动同 commit 改 deploy script。两个 commit 拆分 = 故障窗口（即使秒级窗口 staging deploy 死循环不可恢复，要等用户手动落 env）
+3. **Reviewer L2 验收：** 新 auth-gated endpoint 的 deploy script 改动必须验证两条路径：(a) auth env 未配时 graceful-degrade（warning + 不 exit）+ (b) auth env 已配时 strict check
+4. **Bash 旧 bytecode 重启 deploy run：** deploy script 改动同 commit 后必须**重启 deploy 进程**（pm2 reload 或 docker restart 或 simply 触发新 GH Actions run）— bash 已读取旧 bytecode，不会自动 reload；如果 deploy 是 GH Actions 触发则下次 run 自然新进程，无需特殊操作；如果是 SSH 持续连接 + bash interactive 则需手动 source 或退出重进
+
+### 5.3 graceful-degrade 模板
+
+```bash
+# scripts/deploy-staging.sh （F007 fix-round 1 后版本）
+ACTUAL_SHA=$(curl -s -H "X-Health-Token: ${HEALTH_DETAIL_TOKEN:-}" "$HEALTH_URL" | jq -r .git_sha)
+
+if [ -z "$HEALTH_DETAIL_TOKEN" ]; then
+  echo "⚠️  HEALTH_DETAIL_TOKEN not set — skip strict SHA verification (graceful-degrade)"
+  echo "   To enable strict check: SSH staging, set HEALTH_DETAIL_TOKEN in .env.staging, redeploy"
+  exit 0
+fi
+
+if [ -z "$ACTUAL_SHA" ] || [ "$ACTUAL_SHA" = "null" ]; then
+  echo "❌ Health endpoint returned no git_sha despite token set"
+  echo "   Token may be wrong or endpoint may not return git_sha. Investigate."
+  exit 1
+fi
+
+if [ "$ACTUAL_SHA" != "$EXPECTED_SHA" ]; then
+  echo "❌ SHA mismatch: expected $EXPECTED_SHA, got $ACTUAL_SHA"
+  exit 1
+fi
+
+echo "✅ git_sha verified: $ACTUAL_SHA"
+```
+
+### 5.4 反面案例
+
+**KOLMatrix BL-034 F007 实战（2026-05-05）：** F007 commit 0db858f 加 token gate → staging deploy 死循环（token 未配 + 严格 grep）→ 用户报障 → Generator fix-round 1 commit 07a6db4 加 graceful-degrade → 第二次 deploy 仍 fail（bash bytecode）→ 第三次 deploy 触发新 GH Actions run 才 PASS。
+
+**反面（不遵守本节会发生的）：** 引入 default-deny 健康检查时不改 deploy script → staging deploy 死循环要 N 小时排查 + 全责落到 fix-round 1 + 用户驱动 SSH 落 env 时无法验证（deploy 跑不通）→ prod 上线时间被延后。
+
+**来源：** KOLMatrix BL-034 F007 deploy-staging.sh 死循环 + bash 旧 bytecode 双坑。Reviewer 在 signoff 报告新提此规律入框架（v0.9.12 候选），用户 2026-05-05 全 Accept。
+
+---
+
 ## 来源
 
 - KOLMatrix BI2-F002 两轮重裁决 + Round 2 实测证伪（2026-04-20）
@@ -320,3 +383,4 @@ KOLMatrix B5 F006 case：
 | 2026-04-20 | 初版沉淀（§1 PM2 zero-downtime 3 条件 + Next.js custom server 路径）| KOLMatrix BI2-F002 两轮证伪 |
 | 2026-04-23 | §2 VPS working tree 卫生 + artifact in-git 强制（3 条规律 + Reviewer checklist）| KOLMatrix BI3-F005 签收漏 + BAux1 deploy 失败 |
 | 2026-05-01 | §1 扩展 PM2 6.0.14 env_file anti-pattern；§3 完整链 checklist（schema + enrich + SHA 对齐边界）；§4 Visual baseline regen 注意事项 | KOLMatrix B5 7 轮 fixing + MVP-internal-demo-prep 3 轮 fixing 累积 |
+| 2026-05-05 | §5 新 auth-gated endpoint 配套 deploy script（v0.9.12，含 graceful-degrade 模板 + bash 旧 bytecode 重启 deploy run）| KOLMatrix BL-034 F007 deploy-staging.sh 死循环 + bash bytecode 双坑 |

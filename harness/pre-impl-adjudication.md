@@ -296,6 +296,77 @@ B0 sprint 实测：
 
 ---
 
+## 11. Building 中段良性 partial-pending 变种（v0.9.12 — BL-034 F005 沉淀）
+
+**与 §1-§10 主 pattern（pre-impl audit）的关系：** 本节描述同一裁决机制的**触发时机变种** — 主 pattern 在 building 启动**前**（Generator 看 spec 阶段），本变种在 building **中段**（Generator 已写部分代码，发现 spec 与现实有未在 pre-impl 阶段暴露的偏差）。机制（Generator 主动停 + Planner 短格式裁决 + 单步实装）相同，但**状态机切换不同**：建议切 `fixing` 而非 `verifying`。
+
+### 11.1 触发条件
+
+Generator 在 building 实装某 feature 时，发现 spec acceptance 包含**实装才能暴露的偏差**：
+
+| 偏差类型 | 例 |
+|---|---|
+| 服务端配置 vs 客户端代码 | spec 列 9 处加 `max_tokens`，实装才发现 7 处走 aigcgateway actions/run 服务端 Action 模板，KOLMatrix 客户端代码不可覆盖 |
+| 跨系统协调缺位 | spec 假设功能在本仓内闭环，实装才发现需要 ops 层 / 上游服务 / 第 3 方协作完成 |
+| 接口契约漂移（隐式） | spec 引 API 现状是 v1，实装才看 v2 已 deploy，behaviour 已变 |
+| 数据 shape 漂移（隐式） | spec 预期返 array，实装跑 dry-run 才看到返 wrapped object |
+
+**判据：偏差是 pre-impl 阶段**无法**暴露的**（需要 Read 实装代码 / 跑 dry-run / 触达 prod 数据才看到）→ 不是 spec 起草质量问题，是天然 building 中段才显形 → 走本变种处理；偏差是 pre-impl 阶段**应当**能暴露的（Read schema / grep 调用方就能看见）→ 是 spec 起草质量问题 → 走 §1-§10 主 pattern 反向召回责任 + Planner 修订 spec。
+
+### 11.2 Generator 行为指引
+
+发现偏差时，Generator **必须主动停下未完成 feature**（不要盲目"按 spec 字面"实装错的目标），按以下步骤：
+
+1. **完成已可控部分**（如已写好 50% 的代码 + 单测可独立验收的，先 commit 让它达到中间稳定状态）
+2. **写 generator_handoff** 详列：
+   - **已做** 子项清单（commit hash + 行数）
+   - **未做** 子项清单 + 每条标注「为什么 spec 起草时未发现」
+   - **推荐方案** 1-3 选（推 BL-XXX / fix-round 1 完成可控部分 / accept partial 等）
+3. **不切 verifying**（state 仍 `building`），而是在 commit message + project-status.md 注明「partial-pending 等 Planner 裁决」
+
+### 11.3 Planner 短格式裁决格式
+
+收到 generator_handoff partial-pending 后，Planner **必须优先裁决**（同 pre-impl audit 优先级）：
+
+```markdown
+## Planner 裁决（短格式）— {date} {time}
+
+**方案：** A / B / C (Generator 列的某项)
+
+**理由：**
+1. ...（核心 trade-off）
+2. ...（与上线时间线的关系）
+3. ...（与其它 backlog / batch 的协调）
+
+**spec scope 调整：**
+- 修订 docs/specs/{batch}-spec.md §{F00X}：标 done 子项 / pending 子项 / 推 BL-{N} 子项
+- 修订 features.json {F00X} acceptance 同步
+- 推 backlog.json BL-{N} 加新 F0YY（如方案含 push-out）
+
+**状态机切换：** building → fixing（fix_rounds += 1） — Generator 接手完成 acceptance 修订后的 pending 子项 → reverifying → done
+```
+
+### 11.4 状态机切换规则
+
+| 现状 | 行动 | 状态切换 |
+|---|---|---|
+| Generator partial-pending（state=building）| Planner 裁决方案 + 修订 spec/features.json/backlog | `building → fixing`，`fix_rounds += 1` |
+| Generator 完成 fix-round 1 范围 | 推 commit + 切 reverifying | `fixing → reverifying` |
+| Reviewer reverifying PASS | 切 done | `reverifying → done` |
+| Reviewer reverifying 仍有问题 | 起 fix-round 2 | `reverifying → fixing`，`fix_rounds += 1` |
+
+**关键：不切 verifying。** 主 pattern（pre-impl audit）裁决后 Generator 重新进 building；本变种裁决后 Generator 已经 building 过一段，等价于"修复 partial 完成"，应进 fixing 而非 verifying。`fix_rounds` 反映了一次额外的实装开销 — 比 first-round PASS（fix_rounds=0）质量低，但也比传统 verifying-then-fix 模式（先标 partial 切 verifying 再 fixing）少一次浪费的 reverifying round。
+
+### 11.5 反面案例
+
+**KOLMatrix BL-034 F005 实战（2026-05-05）：** Generator Kimi 实装 F005 时发现 spec 列 9 处 max_tokens 中 7 处走 aigcgateway actions/run 服务端 Action 模板，KOLMatrix 客户端代码不可覆盖；同理 4 处 wrap 中 topic-cloud videoTitles 走 actions/run。Generator 主动停下 + 推 commit 3466898（partial 部分稳定状态）+ 写 generator_handoff 8 段详列已做 / 未做 / 推荐 → Planner johnsong 14:00 短格式裁决方案 A：fix-round 1 完成 cost cap MVP（建立可控范围 ~45min），actions/run 服务端配置部分推 BL-035 F013 → Generator commit bb11ed1 完成 cost cap MVP + 07a6db4 deploy-staging.sh fix-up → Reviewer reverifying PASS @ 07a6db4。**总周转 ~3.5h，状态机流转 building (7/8 + partial) → fixing (fix_rounds=1) → reverifying → done，比假设走「先 verifying 再 fixing」节省 1 个 round。**
+
+**反面（不遵守本节会发生的）：** Generator 不停下、按 spec 字面把 7 处 actions/run max_tokens 用 aigcgateway 控制台改 + 客户端代码 hack 同时进，PR 涉及 aigcgateway 控制台动作（绕过 KOLMatrix 代码 PR review 边界）→ 没有 review 留痕，违反铁律 9（任何生产改动必须走流程）。或更糟：Generator 强行写 client code 模拟服务端配置，改在 fetch body 里硬塞 max_tokens 但 aigcgateway 服务端覆盖了 → 上线后 max_tokens 没生效，CRIT-5 修复声称已修但实际没改 prompt 安全面。
+
+**来源：** KOLMatrix BL-034 F005 building 中段 partial-pending → Planner 14:00 裁决方案 A → fix-round 1 → reverifying → done。Reviewer 在 signoff 报告新提此规律入框架（v0.9.12 候选），用户 2026-05-05 全 Accept。
+
+---
+
 ## 10. 版本历史
 
 | 日期 | 修订 | 来源 |
@@ -303,3 +374,4 @@ B0 sprint 实测：
 | 2026-04-19 | 初版沉淀 | KOLMatrix B0 sprint 实测 |
 | 2026-04-20 | §9.1 Planner 写 spec 自检清单 | KOLMatrix BI1-F010 acceptance 偏离案例 |
 | 2026-05-01 | §9.2 数据准备步骤 + 白名单 ID 防抽样污染 | KOLMatrix B5 fixing-3 + MVP fixing-2 |
+| 2026-05-05 | §11 Building 中段良性 partial-pending 变种（v0.9.12 — BL-034 F005 沉淀）| KOLMatrix BL-034 F005 实测 → Planner 短格式裁决 → fix-round 1 |

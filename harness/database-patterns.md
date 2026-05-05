@@ -354,6 +354,29 @@ CREATE POLICY "<table>_tenant_isolation" ON "<table>"
 
 **来源：** KOLMatrix `docs/reviews/backend-full-scan-2026-05-04.md` DB-CRIT-1 / DB-H1。BL-005 (audit_log) + BL-007 (event_log) 历史漏洞溯源。
 
+### 8.1 同 migration 启用多表 RLS 时 cross-cutting helper 必须同 commit 配套改 withTenant（v0.9.12 — BL-034 F003 沉淀）
+
+**坑：** 启用 `audit_log` + `event_log` 两表 RLS 时，BL-034 spec §F003 原仅要求 `logAudit` 改 `withTenant`，未列同 commit 必须配套改 `logEvent`。结果：`logEvent` 的 33 处调用方在 RLS 启用瞬间 **silent fail**（withTenant 无 tenantId 时 `app.tenant_id` 取空字符串 → RLS 拒写 INSERT，但因为是异步 fire-and-forget 模式不抛错给上层）。Generator Kimi 实装时主动同 commit `a23d24d` 配套修，避免 prod 部署后静默丢事件。
+
+**这是 cross-cutting helper 的典型坑** — `logAudit` / `logEvent` / `metrics.record` / `analytics.track` 等横切函数被 N 处调用，spec 起草时只看到「主要用法」一处。
+
+**Spec 起草 + Generator 开工 checklist（任何启用 RLS 的 migration）：**
+
+```bash
+# Generator 开工前必跑：
+grep -rn "logAudit\|logEvent\|metrics\.\|analytics\." src/ | wc -l
+# 必须 ≤ 启用 RLS 的表数 × 30，否则有遗漏调用方
+# 列出每个调用方的 tenantId 来源（请求上下文 / withTenant 上层 / platform-level）
+```
+
+**Spec acceptance 必含子项：**
+
+> [ ] 列出本 migration 启用 RLS 的所有 cross-cutting helper（grep 全仓 logXXX / metrics / analytics / cache.delete 等）+ 每个 helper 在新 RLS 下的行为分支（withTenant 旁路 / platform-level 直写 / 错误抛出）。Generator 开工前提交 helper 调用方核查清单作 generator_handoff 一项。
+
+**反面：** BL-005 / BL-007 引入 audit_log / event_log 时若 spec 没强求核查 logEvent 33+ 调用方，启用 RLS 后静默丢事件可能数月不被发现（事件丢失不报错，仅是 audit/observability 维度数据缺失）。BL-034 借由 Generator 主动责任心避开了此坑，但下次同模式靠运气不可靠。
+
+**来源：** BL-034 F003 a23d24d Generator 主动同 commit 修复 logEvent → 提案 v0.9.12 沉淀（用户 2026-05-05 全 Accept）。配套同坑 BL-031 silent updateMany 模式（§6）。
+
 ---
 
 ## 版本历史
@@ -366,3 +389,4 @@ CREATE POLICY "<table>_tenant_isolation" ON "<table>"
 | 2026-05-04 | §4 RLS 旁路矩阵 + cross-tenant ops 决策树 | KOLMatrix BL-030-F003 backfill scanProducts 0 行（BL-031-F003 hotfix） |
 | 2026-05-04 | §5 跨表 id 类型一致性 / §6 Silent updateMany / §7 staging 端到端跑 .ts 脚本 | KOLMatrix BL-031 cuid cast hotfix + BL-032 S3 |
 | 2026-05-05 | §8 Migration 引入新表必查 RLS policy 默认 enabled | KOLMatrix backend-full-scan-2026-05-04 audit DB-CRIT-1 |
+| 2026-05-05 | §8.1 同 migration 启用多表 RLS 时 cross-cutting helper 必须同 commit 配套改 withTenant（v0.9.12）| BL-034 F003 logAudit + logEvent 33+ 调用方 silent-fail 风险 |

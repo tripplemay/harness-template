@@ -5,6 +5,25 @@
 
 ---
 
+## v0.9.12 — 2026-05-05（BL-034 沉淀，3 条 learnings）
+
+**来源批次：**
+- BL-034-backend-deep-security-and-data-isolation（5 CRIT + AI-H5 + AUTH-H4 + AUTH-H6/DB-H4 共 8 features，7 first-round PASS + F005 partial → fix-round 1 cost-cap MVP → reverifying PASS @ 07a6db4 fix_rounds=1）
+
+**触发原因：**
+- BL-034 F005 building 中段 Generator Kimi 实装时发现 spec 列 9 处 max_tokens 中 7 处走 aigcgateway /v1/actions/run 服务端 Action 模板，KOLMatrix 客户端代码不可覆盖；同理 4 处 wrap 中 topic-cloud videoTitles 走 actions/run。Generator 主动停下 + 写 generator_handoff 详列已做/未做/推荐 → Planner johnsong 14:00 短格式裁决方案 A → Generator fix-round 1 完成 cost cap MVP → done。这是 v0.9.11 §pre-impl-adjudication 短格式裁决模式的 building 中段变种 — 触发时机不同（building 中段 vs pre-impl 阶段）但机制相同；状态机切换不同（building → fixing 而非 verifying）— 框架欠明文
+- BL-034 F003 启用 audit_log + event_log 两表 RLS 时，spec 原仅要求 logAudit 改 withTenant 未列 logEvent 33+ 调用方配套核查；Generator Kimi 主动同 commit 配套修才避开 prod 静默丢事件。这是 cross-cutting helper（logAudit/logEvent/metrics 等）在 RLS 启用时的典型坑 — 框架欠 spec 起草检查项
+- BL-034 F007 加 health endpoint default-deny token guard 触发 deploy-staging.sh 死循环（grep git_sha → exit 1 → 用户无法落地 token env → 下次 deploy 仍 fail），Generator fix-round 1 加 graceful-degrade 路径 + 第二次 deploy 因 bash 旧 bytecode 仍 fail 第三次重启进程才 PASS。新 auth-gated endpoint + deploy script 配套 + bash bytecode 重启的双坑 — 框架欠明文
+- BL-034 F007/F008 测试文件 2 个 unused import warning（afterEach / beforeEach）触发 reverifying 阶段决策成本：是否切 fixing fix-round +1 还是 Soft-watch 入 backlog？lint warnings 处理无明文判据 — 框架欠
+
+**变更：**
+- 修改 `framework/harness/pre-impl-adjudication.md`：新增 §11 "Building 中段良性 partial-pending 变种（v0.9.12 沉淀）"（与 §1-§10 主 pattern 互补，含触发条件 / Generator 行为指引 / Planner 短格式裁决格式 / 状态机切换规则 building → fixing 而非 verifying / BL-034 F005 实战反面案例）
+- 修改 `framework/harness/database-patterns.md`：§8 后追加 §8.1 "同 migration 启用多表 RLS 时 cross-cutting helper 必须同 commit 配套改 withTenant"（含 grep checklist + spec acceptance 必含子项 + BL-034 F003 反面案例）
+- 修改 `framework/harness/deploy-patterns.md`：新增 §5 "新 auth-gated endpoint 配套 deploy script"（含双坑组合分析 + 修订规则 4 条 + graceful-degrade 模板代码 + BL-034 F007 反面案例）
+- 修改 `framework/harness/evaluator.md`：新增 §17 "lint warnings 在 reverifying 阶段的处理矩阵"（3 行处理矩阵 + 判据细化 unused-import vs 非 unused-import + Reviewer 处理流程 + BL-034 F007/F008 反面案例）
+
+---
+
 ## v0.9.11 — 2026-05-05（BL-020 + backend-full-scan-audit 合并沉淀，5 条 learnings）
 
 **来源批次：**

@@ -348,3 +348,33 @@ nvm use                          # 不一致时切换；无 nvm 装 Node 20 LTS
 **反面（BL-020-F002 命中）：** Reviewer 本机 Node 25.7 + jsdom 29 跑 `AiSuggestionsClient.test.tsx` 2 集成 case fail，CI run 25330969685 Node 20 PASS。验证差异源于 Node 25 native localStorage incompat，不是产品 bug；锁 Soft-watch S4 + 本规则。
 
 **来源：** BL-020-F002 Reviewer L1 本机 unit fail / CI PASS 对比。
+
+---
+
+## 17. lint warnings 在 reverifying 阶段的处理矩阵（v0.9.12 — BL-034 F007/F008 沉淀）
+
+**背景：** Reviewer L1 跑 `npm run lint` 时遇 0 errors + N warnings 时无明文判据：是否切 fixing fix-round +1 让 Generator 处理？还是 Soft-watch 入 backlog？BL-034 F007/F008 测试文件各引入 1 个 unused import warning（`afterEach` / `beforeEach`），lint 0 errors / 3 warnings（其中 1 既有 youtube 无关 + 2 BL-034 引入），不阻断 PASS（exit code 0）但模糊地带触发 reverifying 阶段决策成本。
+
+**处理矩阵：**
+
+| 情境 | 处理 |
+|---|---|
+| 0 errors + ≤3 unused-import-style warning（含批次之前的既有 + 本批次引入）| **Soft-watch 不阻断 done**；建议下批次顺手清理（1 行 edit）；signoff §Soft-watch 段落记账 |
+| 0 errors + ≥4 warning，**或**非 unused-import 类 warning（如 `@typescript-eslint/no-explicit-any` / `no-empty-function` / `react-hooks/exhaustive-deps` 等）| **切 fixing fix-round +1** 让 Generator 处理；这类 warning 通常隐含潜在 bug 或 类型不安全 |
+| ≥1 error | **必切 fixing**，与 errors 对待相同 |
+
+**判据细化：**
+
+- **unused-import-style** 范畴包括：unused-vars / unused-imports / no-unused-imports — 这些是死代码，不影响运行时行为
+- **非 unused-import 类** 范畴包括：no-explicit-any / no-empty-function / exhaustive-deps / no-floating-promises — 这些是潜在 bug
+
+**Reviewer 处理流程：**
+
+1. 跑 `npm run lint` 看 errors / warnings 计数
+2. 按矩阵判决：Soft-watch 入 signoff §Soft-watch / 切 fixing
+3. Soft-watch 时 signoff 必须列具体文件:行 + warning 类型 + "建议下批次顺手清理"
+4. 切 fixing 时 evaluator_feedback.issues 列具体 warning 详情让 Generator 定位
+
+**反面（BL-034 F007/F008 命中）：** `src/app/api/health/__tests__/route.test.ts:18` 与 `tests/integration/db-platform-admin-nullif.test.ts:13` 各 1 个 unused import warning（'afterEach' / 'beforeEach'）— 按本矩阵 = unused-import + ≤3 个 → **Soft-watch 入 BL-034 signoff §Soft-watch S8**，不阻断 done。下批次（BL-035 或更后）顺手清。
+
+**来源：** BL-034 F007 + F008 测试文件 unused import 入 Soft-watch S8。Reviewer 在 reverifying 阶段无明文判据 → 提案 v0.9.12 沉淀（用户 2026-05-05 全 Accept）。
