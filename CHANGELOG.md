@@ -5,6 +5,24 @@
 
 ---
 
+## v0.9.14 — 2026-05-06（BL-040 + BL-041 audit 过期 + BL-043 staging fix 沉淀，2 条 learnings）
+
+**来源批次：**
+- BL-040-product-target-audience-required（done @ 2026-05-06，targetAudience NOT NULL 全栈类型清理）
+- BL-041 audit 过期发现（dashboard 3 元素已实装但 audit 写"未含"，Planner johnsong 在 BL-040 planning 阶段 grep 发现）
+- BL-043 staging .env.staging KOLMATRIX_APP_PASSWORD 修复（2026-05-06 ops by Planner，PM2 delete+sourced start 解 env cache 问题）
+
+**触发原因：**
+- Planner johnsong 起 BL-040 planning 时 grep `dashboard/page.tsx` 发现 BL-041 audit @ 2026-05-04 起草时漏 grep 实物状态（dashboard 3 元素 in 4fd778b @ 2026-05-01 实装；audit 在实装 3 天后写"未含"）— v0.9.9 铁律 1 反向应用 audit/spec 起草
+- BL-040 spec 起草时 Planner 漏 grep 完整 `?? 'Not specified'` 模式（仅列 generateAiAssets.ts 一处，但实际 email-generator.ts + video-script-generator.ts 同模式）— Generator 开工前 grep 5sec 发现 → 留 Planner judgement → 入 BL-045 backlog
+- BL-043 staging gap 修复时 Planner 实战踩 PM2 reload/restart --update-env 不读 .env — v0.9.7 §1.6 已 sediment 但局限于 ecosystem.config.js env_file 字段用法；本次实战是 deploy-staging.sh source .env + pm2 start 路径，仍踩同坑 — 需 §1.6 后追加 §1.7 加注「不限 env_file 字段，任何 .env 改动场景」
+
+**变更：**
+- 修改 `framework/harness/planner.md` 铁律 1 检查矩阵：新增 2 行（v0.9.14）— "任意'文件:行 + 现状描述'类引用" + "完整 pattern 模式 — 不仅 grep 单一关键词"；范围从「spec 起草」扩到「spec / audit / review / readiness-report 所有起草类文档」；含实战双反面案例（BL-041 + BL-040）
+- 修改 `framework/harness/deploy-patterns.md` §1.6 后追加 §1.7「不限于 env_file — 任何 .env 改动后 PM2 reload/restart 都不重读」（含实战触发场景 + pm2 jlist 验证证据 + 修复模板 + 反面案例 BL-043 staging gap）
+
+---
+
 ## v0.9.13 — 2026-05-06（BL-024 沉淀，2 条 learnings）
 
 **来源批次：**

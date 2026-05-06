@@ -210,8 +210,18 @@ Planner 写 spec，若涉及以下内容，**必须先 Read 对应文件核实**
 | 现有 schema 字段 | Read schema.prisma 或最新 migration |
 | 枚举值 / 常量 | Read 定义文件 |
 | **regex / id-format / type-check（v0.9.11 新增）** | **Read schema.prisma 对应 model 字段类型注解（`@default(cuid())` / `@default(uuid())` / `@default(nanoid())`）+ grep ≥1 条既有测试 fixture 数据形态印证** |
+| **任意"文件:行 + 现状描述"类引用（v0.9.14 新增 — 适用 spec / audit / review / readiness-report 所有起草类文档）** | **`grep` / `Read` 实物核对当前 import / component 调用 / migration 状态；任何「未含 X / 缺 Y / 待实装 Z」类断言必须 5sec grep 验证；`git log` 看是否后续批次已 retroactive 实装** |
+| **完整 pattern 模式（v0.9.14 新增）— 不仅 grep 单一关键词** | **当 spec acceptance 列「删某 fallback / 收紧某 type / 清某 pattern」时必须 `grep -rn '完整模式' src/` 看全仓出现次数（不限 spec 列出的文件路径）；scope 漏 grep = 留 dead code / 留下次批次清理的 spec drift** |
 
 **反面案例（v0.9.11 新增类）：** BL-020 F001 spec 起草时假设 `productId` 是 UUID（沿袭 audit §3 CR-1 文字描述），未 grep `schema.prisma` → Generator pre-impl audit 反向纠错指出 `Product.id` 实为 `@default(cuid())`，套 UUID_RE 会破 4 调用方 + 5 既有 fixture（25-char CUID）测试全红。Planner 短格式裁决 #1:A 修订全文 + 修订 acceptance regex 为 `/^c[a-z0-9]{24,}$/i`。本可在 spec lock 前 grep schema.prisma 1 次避免。
+
+**反面案例（v0.9.14 新增类）— audit/spec 起草前漏 grep 实战双案例：**
+
+1. **BL-041 audit 过期（2026-05-04 → 2026-05-06 发现）：** `prod-mvp-readiness-audit-2026-05-04.md §5 D2` 写「Dashboard 缺 PRD §4.1 三元素（工作流 6 步图 / CPI 对比卡 / 30D ROI 趋势图）」，但 grep `dashboard/page.tsx` 即可发现 line 79+88+89 已 import + 渲染 `WorkflowSteps` + `CompetitorCpiCard` + `DashboardRoiTrendCard` — `MVP-internal-demo-prep-F001` (commit `4fd778b @ 2026-05-01`) 早已实装齐全（recharts + 5 locale i18n + visual baseline 全齐）。Audit 起草人 Planner Kimi 漏 grep 实物状态 → BL-041 在 backlog 错挂 3 天 + Planner johnsong 在 BL-040 planning 阶段才 5sec grep 发现 → 直接 retroactive 关闭。本可在 audit 起草时 5sec grep 避免。
+
+2. **BL-040 spec scope 漏 grep（2026-05-06）：** spec §F001 acceptance 列「删 `generateAiAssets.ts:175 ?? 'Not specified'` fallback」一处，但 Generator Kimi 开工前 grep 实物发现 `src/lib/assets/generators/email-generator.ts:74` + `src/lib/assets/generators/video-script-generator.ts:80` 同样含 `?? 'Not specified'` 模式（BL-025-F003 / BL-030 后实装）— D5 同根理由（LLM 缺 audience context）但 spec 未列。Generator 按铁律 #10 没越界，留 Planner judgement → 入 backlog deferred 跟踪。本可在 Planner spec 起草时 `grep -rn "?? 'Not specified'" src/` 5sec 一次性命中所有 3 处避免。
+
+两案例同根问题：**audit/spec 涉及"完整模式 X 全仓未/已实装"类断言时，必须先 grep 全仓而非依赖记忆 / 文档字面 / 单文件假设。** v0.9.13 §5.1「spec 改 deploy-script 时同 commit 必须改对应 yml」也是同根问题（spec 注释明示但实装漏 = 未核查实物状态）。
 
 **规格引用实际代码时必须：**
 - 用 ` ```sql ` / ` ```ts ` 等代码块贴真实片段

@@ -115,6 +115,41 @@ sudo cat /proc/<NEW_PID>/environ | tr '\0' '\n' | grep <NEW_VAR>  # 验证
 
 **spec 起草陷阱：** `ecosystem.config.js` 的 `env_file:` 字段名给人「PM2 会管」的强烈错觉。实际它只在初次 spawn 读一次。任何依赖「reload 自动注入新 env」的 runbook 都会踩。如果你的 deploy runbook 里写 `pm2 reload <app> --update-env`，**那是错的**，必须改成 delete + sourced-shell start。
 
+### 1.7 不限于 `env_file` — 任何 `.env` 改动后 PM2 reload/restart 都不重读（v0.9.14 实战再现）
+
+**实战触发：** BL-043 staging .env.staging 修复（2026-05-06）— Planner 添加新 env var `KOLMATRIX_APP_PASSWORD` + 同步改 `DATABASE_URL` 中密码后：
+
+```bash
+# 路径 1（标准 ecosystem.config.js 但不含 env_file 字段，PM2 启动时由 deploy-staging.sh 跑：
+#   set -a; source .env.staging; set +a; pm2 start ecosystem.config.js --only <app>）
+# .env 改动后：
+pm2 reload kolmatrix-staging --update-env  # ❌ 仍 28P01 password authentication failed
+pm2 restart kolmatrix-staging --update-env  # ❌ 同
+```
+
+**深入诊断（pm2 jlist 验证）：**
+- `DATABASE_URL` 在 process env 中存在但**值是旧的**（PM2 daemon 启动时缓存的 env snapshot）
+- `KOLMATRIX_APP_PASSWORD` 在 process env 中**根本不存在**（PM2 没读 `.env.staging` 新加的 line）
+- 直接 `PGPASSWORD=$NEW_PWD psql -h localhost -U kolmatrix_app -d kolmatrix_staging` 通过 → 证明 PG 角色密码与 .env 一致，根因不是 PG 配置错位，而是 **PM2 进程内 env 与 .env 文件不一致**
+
+**修订规则（reaffirm 加强）：** 不限于 §1.6 `env_file` 字段用法 — **任何环境下** `.env` 改动后必须 `pm2 delete + sourced shell start`（不是 reload / restart）。
+
+**深层原因：** PM2 daemon 持有所有 process 的 env snapshot（process 启动时从 fork 的 shell 继承）。`reload --update-env` 只重启 process（保持 daemon 缓存的 env），不会重新 source `.env` 文件 — 因为 PM2 daemon 不知道 .env 文件存在（除非你用 `env_file:` 字段，但 §1.6 已证 `env_file:` 也只初次读）。
+
+**修复模板（与 §1.6 一致，加注 .env 改动场景）：**
+
+```bash
+cd /opt/<app>
+pm2 delete <app>                          # 不是 reload / restart — daemon 不重读 .env
+set -a && source .env.<env> && set +a     # 显式 source 注入当前 shell（含新加的 var）
+pm2 start ecosystem.config.js --only <app>  # PM2 daemon 从新 shell 重新缓存 env
+# 如需验证：pm2 jlist | jq '.[] | select(.name=="<app>") | .pm2_env.<NEW_VAR>' 应非空
+```
+
+**反面案例（已落实战）：** BL-043 staging .env.staging 修复时 Planner 先尝 reload + restart 全失败 → 才用 delete + sourced start 解。**未来 spec 起草时凡涉及"新增 .env var + PM2 应用读"必须明示「pm2 delete + sourced shell start」流程，不可依赖 reload/restart --update-env**。
+
+**来源：** v0.9.14 沉淀（BL-043 staging gap 修复 2026-05-06）。reaffirm v0.9.7 §1.6 + 扩范围（不限 env_file 字段用法）。Planner johnsong 在 prod redeploy ops 期间踩到，用户 2026-05-06 全 Accept。
+
 ---
 
 ## 2. VPS working tree 卫生 + artifact in-git 强制
