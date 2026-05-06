@@ -274,30 +274,54 @@ const prompt = `Generate marketing email targeting <USER_KOL_NAME>${escapeForXml
 
 KOLMatrix `docs/reviews/backend-full-scan-2026-05-04.md` AI-CRIT-5 + AI-H5；BL-034 收尾批次实施。Anthropic / OpenAI prompt-injection 业界共识做法（XML tag + untrusted-data 声明）。
 
-### 4.7 mcp 自动化可达性（v0.9.13 — BL-024 Q2 ops + BL-035 F013 沉淀）
+### 4.7 aigcgateway Action 抽象层根本不绑定 max_tokens（v0.9.13 — BL-024 Q2 ops + BL-035 F013 + 2026-05-06 实测修订）
 
-**截至 2026-05-06，mcp__aigc-gateway 工具集对 `max_tokens` 字段不暴露：**
+**关键发现（2026-05-06 实测修订原假设）：** 之前假设「mcp 不可达 → Dashboard UI 可设」是**错的**。aigcgateway Action 抽象层（actions/run 路径）**完全不绑定 max_tokens** — mcp 工具 + Dashboard UI 都不暴露此字段。
 
-| Tool | 字段范围 | max_tokens 可达？ |
+**实测证据矩阵：**
+
+| 路径 | max_tokens 支持 | 实测方法 |
 |---|---|---|
-| `create_action_version` | messages / variables / changelog / set_active | ❌ |
-| `update_action` | name / description / model | ❌ |
-| `get_action_detail` | activeVersion (id / versionNumber / messages / variables / changelog / createdAt) — **不含 maxTokens 字段** | ❌（无法读取目标值验证） |
+| `/v1/chat/completions` 直调（mcp `chat` tool / 客户端 fetch） | ✅ 完全支持 OpenAI 标准 | mcp `chat` schema 含 `max_tokens` 字段；实测 max_tokens=15 → 输出截断到 7 行 + finishReason="length" |
+| `/v1/actions/run`（mcp `run_action` / 客户端 actions/run） | ❌ **不暴露**（Action template 抽象层不绑定） | mcp `create_action_version` / `update_action` / `get_action_detail` schema 全无 max_tokens；**Dashboard UI Action 详情页无 max_tokens 字段**（用户 2026-05-06 实地确认） |
 
-**后果：** v0.9.11 §4 max_tokens 矩阵 dogfood **仅能通过 aigcgateway Dashboard UI 手工设**。spec 起草时 Planner 不应假设 mcp 自动化全覆盖 §4 矩阵；max_tokens 部分必须列入 user 手工待办（spec §6.1）+ Soft-watch 兜底（与 BL-035 F013 / BL-024 Q2 ops 同处理）。
+**根本原因：** aigcgateway 的 Action 抽象设计为「prompt template + variables + model 绑定」，**max_tokens 是请求级（request-level）参数，不是 template-level 配置**。actions/run 服务端内部调用 chat completions 时是否传 max_tokens / 传什么默认值，外部完全不可知 + 不可控。
 
-**实战数据（共 12 次 max_tokens 推延 Soft-watch）：** BL-035 F013 6 个 Action + BL-024 Q2 ops 6 个 Action（实际是同一组 6 Action 在两个批次中两次推延 max_tokens 设到 UI），系统欠 mcp 暴露字段。
+**KOLMatrix 端实战影响：**
 
-**短期（KOLMatrix 端）：** spec 起草 max_tokens 类条目必含「**mcp 不可达 — 推 user 手工待办**」注解；不再尝试 mcp 自动化 max_tokens。
+| 路径 | 调用方文件 | max_tokens 防御状态 |
+|---|---|---|
+| chat/completions 直调 | `src/lib/products/generateAiAssets.ts:218` (=2000) + `src/lib/assets/generators/aigcgateway-client.ts:121` (default 2000) | ✅ BL-034 F005 已实装真生效 |
+| actions/run 路径 ×7 处 | `customize.ts` / `roi/insights.ts` / `weekly-report/generate.ts` / `kol-database/intelligence.ts` / `campaigns/suggestions.ts` / `topic-cloud.ts` / `embedding/client.ts` | ❌ **客户端无法控** — aigcgateway 服务端默认行为决定 |
 
-**长期（跨项目）：** 给 aigcgateway 项目（独立项目，非 KOLMatrix 范围）报 issue：
-1. `create_action_version` 应接受 `max_tokens` 参数
-2. `update_action` 应接受 `max_tokens` 参数
-3. `get_action_detail` 返回 `activeVersion.maxTokens` 字段以便 dogfood 验证「目标值已设」
+**短期防御（已实装）：**
+1. **BL-034 F005 cost-cap MVP**：`AI_DAILY_COST_USD_PER_TENANT_MAX=5.00` 兜底 — 即使单次 LLM 输出 12K tokens，单 tenant 单日最多 $5 → prod 月预算 $100 保护
+2. **v0.9.11 §4 prompt-injection 防御已 v2 active**：6 Action 全 system prompt 加 untrusted-data clause + KOLMatrix 端 wrapUserInput XML tag — 攻击者无法通过 Action prompt-injection 诱导超长输出
+3. **aigcgateway 月预算 $100 整体上限**：硬天花板
 
-**清理触发条件：** aigcgateway 暴露字段后回头清理 6+ Action 历史 Soft-watch + 移除本节注解（v0.9.X+1 沉淀）。
+**长期修复方向（4 选 1，KOLMatrix 端可行）：**
 
-**来源：** KOLMatrix BL-035 F013 (2026-05-05) + BL-024 Q2 ops (2026-05-05 23:30) 实战 12 次 max_tokens 推延。Planner johnsong 在 BL-024 generator_handoff 提案 + 用户 2026-05-06 全 Accept（v0.9.13 候选 #2）。
+| 方案 | 操作 | 工时 | 评价 |
+|---|---|---|---|
+| **P1. 7 处 actions/run 调用改 chat/completions 直调** | KOLMatrix 端把 actions/run 调用方改为直接 fetch /v1/chat/completions（手动渲染 prompt template）+ 传 max_tokens；放弃 Action 抽象 | 1-2 day（影响 7 文件 + 重新跑 BL-035 F013 类协调） | 治本 + 客户端完全可控；但增加 prompt rendering 维护成本 |
+| **P2. 给 aigcgateway 项目加 maxTokens 字段** | 跨项目 issue：Action schema 加 maxTokens 列 + Dashboard UI 暴露 + mcp 工具暴露 | 跨项目 — KOLMatrix 不可控时间 | 治本 + 保留 Action 抽象；依赖 aigcgateway 项目优先级 |
+| **P3. 接受 actions/run 路径无客户端 max_tokens 控制** | 依赖现有 cost-cap MVP + prompt-injection 防御 + 月预算上限作 3 重防御 | 0（已是当前状态） | 短期 OK（prod 月预算 $48 余 + cost-cap 已实装 + 攻击面已防）；长期不可持续 |
+| **P4. 混合策略** | 高风险路径（如 customize 邮件，攻击面最大）走 P1 改 chat/completions 直调；低风险路径（如 topic-cloud / kol-database-intelligence 输出本身就短）走 P3 接受 | ~0.5 day（仅高风险 2-3 处改）| 平衡治理 + 工时 |
+
+**v0.9.13 §4.7 修订（2026-05-06 实测后）：** 不再推「Dashboard UI 设 max_tokens」（错的）；推 P1/P3/P4 混合策略 + 跨项目 P2 长期：
+
+1. **跨项目 issue**（aigcgateway 项目独立项目）：Action schema 加 `maxTokens` 字段 + `create_action_version` / `update_action` 接受 `max_tokens` 参数 + Dashboard UI Action 详情页加输入框 + `get_action_detail` 返回 `activeVersion.maxTokens`
+
+2. **KOLMatrix 短期 spec 起草约束（修订）：** AI 调用类 feature spec 起草时，必须明示路径选择：
+   - 选 chat/completions 直调（max_tokens 客户端可控） → spec 列 max_tokens 矩阵 + 实装层 fetch body 传 max_tokens
+   - 选 actions/run（Action 抽象） → spec 必含「max_tokens 由 aigcgateway 服务端默认决定，客户端不可控」+ 防御链：cost-cap MVP + prompt-injection wrap + 月预算
+
+3. **历史 Soft-watch 处置：** BL-035 F013 + BL-024 Q2 ops 共 12 次 max_tokens 推延，**重新分类为「不可执行 Soft-watch — Dashboard UI 也不暴露」**；用户手工待办从「UI 设 max_tokens」改为「评估是否升级 actions/run 调用为 chat/completions 直调（P1）」入 backlog。
+
+**来源：**
+- KOLMatrix BL-035 F013 (2026-05-05) + BL-024 Q2 ops (2026-05-05 23:30) 12 次 max_tokens 推延 Soft-watch
+- 2026-05-06 Planner johnsong 实测对照（mcp `chat` max_tokens=15 截断生效 vs `run_action` 无 max_tokens 参数 + 用户 Dashboard UI 实地确认无字段）→ 修订 v0.9.13 §4.7 假设
+- Planner johnsong 在 BL-024 generator_handoff 提案 + 用户 2026-05-06 全 Accept（v0.9.13 候选 #2）+ 2026-05-06 实测后修订
 
 ---
 
@@ -320,3 +344,4 @@ KOLMatrix `docs/reviews/backend-full-scan-2026-05-04.md` AI-CRIT-5 + AI-H5；BL-
 | 2026-05-04 | §3 AI 输出 placeholder 规约 + server-side validation 兜底 | KOLMatrix BL-032 prompt 修复 |
 | 2026-05-05 | §4 AI 调用必含 max_tokens + 用户输入必用 XML tag 包裹 | KOLMatrix backend-full-scan-2026-05-04 audit AI-CRIT-5 + AI-H5 |
 | 2026-05-06 | §4.7 mcp 自动化可达性（v0.9.13，max_tokens 字段 mcp 不可达 → 短期 spec 注解 + 长期跨项目 issue）| KOLMatrix BL-035 F013 + BL-024 Q2 ops 共 12 次 max_tokens 推延 Soft-watch |
+| 2026-05-06 | §4.7 修订（v0.9.13 fix-up）：实测后改为 「Action 抽象层根本不绑定 max_tokens」（mcp + UI 都不支持）+ P1/P2/P3/P4 4 种长期修复方向 + KOLMatrix 短期 spec 起草约束修订 | 用户 2026-05-06 实地确认 Dashboard UI 无 max_tokens 字段 |
