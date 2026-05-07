@@ -5,6 +5,23 @@
 
 ---
 
+## v0.9.16 — 2026-05-08（BL-052 verifying P5 裁决沉淀，1 条 learning）
+
+**来源批次：**
+- BL-052-dashboard-trend-edge-polish（11/11 building done @ commit `3ba3fe2` + Planner P5 裁决 @ commit `4ede09e` + Reviewer signoff PASS @ commit `722fc66`，grade B+/Ready，5/7 17:30 → 5/8 01:07 共 ~7.5h 含裁决等待）
+- 触发点：Reviewer 5/7 23:40 partial 报告 grade C / Not ready，失败点 `tests/integration/pre-commit-hook.test.ts` 全套并发抖动（外部网络依赖 Google Fonts woff2 拉取，单文件隔离跑 PASS），与 BL-052 13 commits 范围零交集
+
+**触发原因：**
+- 既有 P5 规则只覆盖"裁决理由复用价值"，未明文"acceptance 边界 vs 全套测试基线"的判断流程 — 范围正交的失败若不主动裁决，Reviewer 默认采用"测试不全绿就 Not ready"隐式门槛 → 与 spec § acceptance 列表脱节，会让"修不好就是不能 done"成为评分系统的不可见门槛
+- BL-052 实战首次系统应用此模式：git log 追溯（pre-commit-hook 来自 BL-027-F004 + 依赖脚本来自 BL-025-F009 / BIx-mvp-polish-pass）→ 与本批次零交集 → 范围正交确认 → 独立批次 BL-054 治理 → Reviewer 重打分 B+/Ready
+- 不沉淀的成本：每次 Reviewer 报全套测试红时 Planner 都要从头复现裁决理由，跨批次复用价值丢失；新 Planner 上手时无现成模板，可能误判"必须修才能 done"导致拖延上线时间线
+
+**变更：**
+- 修改 `framework/harness/planner.md` §"Planner 裁决职责"末尾追加 §"规则 P5.2：acceptance 边界 vs 全套测试基线（v0.9.16 新增）"段（含 git log 正交性判断流程命令模板 + 4 项裁决落实模板 + 反面案例 + 适用场景边界 4 行表 + BL-052 实物范例）
+- 归档 `framework/archive/proposed-learnings-archive-v0.9.16.md`（含完整候选条目 + BL-052 5/8 00:10 → 01:07 时间线）
+
+---
+
 ## v0.9.15 — 2026-05-07（BL-021 F002 撤再翻盘 + BL-049 测试基建 audit 沉淀，2 条 learnings）
 
 **来源批次：**

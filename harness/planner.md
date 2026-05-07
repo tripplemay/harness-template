@@ -193,6 +193,47 @@ Planner 修订任何 feature 的 acceptance 段时，**必须用 grep 扫描该 
 
 完整 pattern 详见 `framework/harness/pre-impl-adjudication.md`。
 
+### 规则 P5.2：acceptance 边界 vs 全套测试基线（v0.9.16 新增）
+
+来源：BL-052 verifying P5 裁决（2026-05-08）。Reviewer 5/7 partial 报告 grade C / Not ready，失败点 `tests/integration/pre-commit-hook.test.ts` 全套并发抖动（外部网络依赖 Google Fonts woff2 拉取），单文件隔离跑 PASS。Planner johnsong 5/8 00:10 裁决：失败文件来自 BL-027-F004 + BL-025-F009，与 BL-052 范围正交，独立 BL-054 治理；不计入 BL-052 评分。Reviewer 复验仅 BL-052 引入代码 → grade B+ / Ready @ commit `722fc66`。
+
+**核心规律：** Reviewer 报告"全套 `npm run test:integration` 红"时，Planner 裁决前必须先做"**正交性判断**" — acceptance 边界是 spec § acceptance 列表逐项，**不含**"全套测试普遍绿"隐式门槛。
+
+**正交性判断流程（必跑）：**
+
+```bash
+# 1. 追溯失败测试文件的引入批次
+git log --all --oneline -- <失败测试文件路径>
+# 2. 取本批次 commit 集做交集
+git log --oneline <building-start>..HEAD -- <失败测试文件路径>
+# 3. 步骤 2 输出空 = 范围正交 → 不计入本批次评分
+```
+
+**裁决落实模板（4 项同 commit）：**
+
+1. **追加 §Planner 裁决段** 到 `docs/test-reports/<batch>-verifying-YYYY-MM-DD.md`（含 git log 实物追溯证据 + 范围正交结论 + 复验范围重定义）
+2. **新建独立 backlog 条目** `BL-XXX-<problem-name>` 治理失败点（priority + 推荐方向 + 工时估算）
+3. **更新 `.auto-memory/project-status.md`** 反映新 backlog 立项 + 本批次评分豁免
+4. **commit message 明示** "Planner P5.2 裁决：<失败点> 与本批次正交，新建 BL-XXX 治理"
+
+**反面（不适用此规律时）：**
+
+- 拖延 done → 上线时间线收紧（BL-052 案例：buffer 5+ 天可能瞬变 < 1 天）
+- Generator 被迫给"不属于本批次的 flaky"写 fix → 跨批次污染 commit history（违反铁律 #10 commit-tag 一致性）
+- 隐式假门槛"测试不全绿就是不能 done"与 spec 明文 acceptance 不一致 → 评分系统失活
+- Reviewer 反复 fail 评分让"修不好就是不能 done"成为不可见门槛，掩盖真实 framework reliability 缺陷
+
+**适用场景边界：**
+
+| 情形 | 是否适用 P5.2 |
+|---|---|
+| 失败测试文件来自历史批次 + 本批次零修改 | ✅ 适用（范围正交，建独立 backlog） |
+| 失败测试文件本批次新增 / 修改 | ❌ 不适用（属于本批次范围，必须 fix） |
+| 失败由本批次代码改动引发的 regression | ❌ 不适用（即使测试文件来自历史，行为变更归本批次） |
+| 失败属于 setupFiles / 全局 mock / fixture 通用基础设施 + 影响所有批次 | ✅ 适用（应建独立 framework 治理批次，参 v0.9.15 #2） |
+
+**实物范例（BL-052 5/8 00:10）：** `tests/integration/pre-commit-hook.test.ts` 引入自 BL-027-F004（commit `2c8af8a`），依赖脚本 `scripts/regenerate-material-symbols-subset.sh` 引入自 BL-025-F009 / BIx-mvp-polish-pass。BL-052 13 commits（`c4afd5a..3ba3fe2`）零修改这两文件 → 范围正交 → 建 BL-054-flaky-network-test-isolate（medium，~2-4h Generator + 0.5h Reviewer）→ Reviewer 复验仅 BL-052 引入代码 → grade B+ / Ready @ commit `722fc66`（5/8 01:07）。
+
 ---
 
 ## Planner 铁律（spec 编写前核查 — 2026-04-18 采纳）
