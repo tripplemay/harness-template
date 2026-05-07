@@ -5,6 +5,23 @@
 
 ---
 
+## v0.9.15 — 2026-05-07（BL-021 F002 撤再翻盘 + BL-049 测试基建 audit 沉淀，2 条 learnings）
+
+**来源批次：**
+- BL-021-suspense-critical-paths（F001 Skeleton + 5 critical-path loading.tsx；fix-round 1 真修 AiSuggestionsClient localStorage 跨环境 stub @ commit 9fa2a49 + signoff @ commit da94b73 — 1.4x 加速 3h36min vs spec 2.5h）
+- BL-049-test-infra-systematic-upgrade（13 项 audit 发现合并为 X1 / 7 features，F007 即本次沉淀）
+- BL-047 backlog 条目历时三拍：5/7 10:30 Planner 起 → Generator 撤（WSL2 forks pool 1043/1043 PASS 误判 premise 错）→ 5/7 11:51 Codex 在 BL-021 reverifying 真复现 → 5/7 13:00 fix-round 1 commit 9fa2a49 真修 → 5/7 13:10 状态 closed-not-reproducible → closed-resolved
+
+**触发原因：**
+- v0.9.9 / v0.9.14 铁律 1 已覆盖"spec / audit / readiness-report 起草前 grep 实物状态"，但**对"测试 fail/PASS"类断言**还存在跨环境盲区：Generator 自己 pool 跑 PASS ≠ Reviewer pool 跑 PASS。BL-047 撤再翻盘是直接反例 — vitest forks vs threads pool 启动顺序不同 → stub 初始化时机异 → 同一段代码两环境结果分裂
+- BL-049-F002 启用 vitest 4 fileParallelism + maxWorkers=4 后，跨 pool 行为差异更广泛触发；F003 把 visual / chromium 拆 Playwright project 也是同根问题（多 worker 跨环境时序）— 必须把"stub environment-agnostic"作为设计阶段强制项，不留运行时再修
+
+**变更：**
+- 修改 `framework/harness/planner.md` 铁律 1 检查矩阵：新增 2 行（v0.9.15 #1 + #2）— 「Backlog/spec 涉及"测试 fail/PASS/覆盖"类断言」+ 「Test fixture / 全局 mock / setupFiles 内 stub 设计」；含实战反面案例段（BL-047 撤再翻盘 + Map-backed localStorage stub @ 9fa2a49 范式）
+- 归档 `framework/archive/proposed-learnings-archive-v0.9.15.md`（含 BL-047 完整三拍时间线 + Map-backed stub 实装范式截选）
+
+---
+
 ## v0.9.14 — 2026-05-06（BL-040 + BL-041 audit 过期 + BL-043 staging fix 沉淀，2 条 learnings）
 
 **来源批次：**

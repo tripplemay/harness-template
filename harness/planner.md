@@ -212,6 +212,8 @@ Planner 写 spec，若涉及以下内容，**必须先 Read 对应文件核实**
 | **regex / id-format / type-check（v0.9.11 新增）** | **Read schema.prisma 对应 model 字段类型注解（`@default(cuid())` / `@default(uuid())` / `@default(nanoid())`）+ grep ≥1 条既有测试 fixture 数据形态印证** |
 | **任意"文件:行 + 现状描述"类引用（v0.9.14 新增 — 适用 spec / audit / review / readiness-report 所有起草类文档）** | **`grep` / `Read` 实物核对当前 import / component 调用 / migration 状态；任何「未含 X / 缺 Y / 待实装 Z」类断言必须 5sec grep 验证；`git log` 看是否后续批次已 retroactive 实装** |
 | **完整 pattern 模式（v0.9.14 新增）— 不仅 grep 单一关键词** | **当 spec acceptance 列「删某 fallback / 收紧某 type / 清某 pattern」时必须 `grep -rn '完整模式' src/` 看全仓出现次数（不限 spec 列出的文件路径）；scope 漏 grep = 留 dead code / 留下次批次清理的 spec drift** |
+| **Backlog / spec 涉及"测试 fail / PASS / 覆盖"类断言（v0.9.15 #1 新增）** | **必须实地 `npx vitest run <target>` 验证当前实情 + 复现 reviewer 实际跑测试的环境（pool 类型 forks vs threads / vitest version / Node version / OS）。Generator 在 forks pool 跑 PASS ≠ Codex 在 threads pool 跑 PASS — vitest pool 启动顺序差异可触发跨环境 stub 初始化竞态；只跑自己环境 = 不能证伪 reviewer 报告的 fail。** |
+| **Test fixture / 全局 mock / setupFiles 内 stub 设计（v0.9.15 #2 新增）** | **stub 必须 environment-agnostic — 用 Map / Set 等自实装数据结构而不是依赖 jsdom / happy-dom / Node global 默认行为；不同 vitest pool 的 worker 启动顺序可能让 jsdom 全局 init 时机异于预期 → 不依赖默认行为才能消除跨 pool 的初始化 race（BL-047 fix-round 1 `commit 9fa2a49` Map-backed localStorage stub 即为范式）** |
 
 **反面案例（v0.9.11 新增类）：** BL-020 F001 spec 起草时假设 `productId` 是 UUID（沿袭 audit §3 CR-1 文字描述），未 grep `schema.prisma` → Generator pre-impl audit 反向纠错指出 `Product.id` 实为 `@default(cuid())`，套 UUID_RE 会破 4 调用方 + 5 既有 fixture（25-char CUID）测试全红。Planner 短格式裁决 #1:A 修订全文 + 修订 acceptance regex 为 `/^c[a-z0-9]{24,}$/i`。本可在 spec lock 前 grep schema.prisma 1 次避免。
 
@@ -222,6 +224,15 @@ Planner 写 spec，若涉及以下内容，**必须先 Read 对应文件核实**
 2. **BL-040 spec scope 漏 grep（2026-05-06）：** spec §F001 acceptance 列「删 `generateAiAssets.ts:175 ?? 'Not specified'` fallback」一处，但 Generator Kimi 开工前 grep 实物发现 `src/lib/assets/generators/email-generator.ts:74` + `src/lib/assets/generators/video-script-generator.ts:80` 同样含 `?? 'Not specified'` 模式（BL-025-F003 / BL-030 后实装）— D5 同根理由（LLM 缺 audience context）但 spec 未列。Generator 按铁律 #10 没越界，留 Planner judgement → 入 backlog deferred 跟踪。本可在 Planner spec 起草时 `grep -rn "?? 'Not specified'" src/` 5sec 一次性命中所有 3 处避免。
 
 两案例同根问题：**audit/spec 涉及"完整模式 X 全仓未/已实装"类断言时，必须先 grep 全仓而非依赖记忆 / 文档字面 / 单文件假设。** v0.9.13 §5.1「spec 改 deploy-script 时同 commit 必须改对应 yml」也是同根问题（spec 注释明示但实装漏 = 未核查实物状态）。
+
+**反面案例（v0.9.15 新增类）— 测试断言跨环境复现盲区（BL-047 撤再翻盘 + BL-049 audit 沉淀）：**
+
+BL-047 backlog 条目报「`AiSuggestionsClient` localStorage stub 跨环境失败导致 `npm test` 1043/1043 → 1042/1043 fail」。Planner johnsong 5/7 10:30 起草 backlog 时未实地复现，仅基于 reviewer 简述写"无法证伪先建条目"。Generator Kimi 5/7 10:30 开工前在 WSL2 forks pool 跑 `npx vitest run AiSuggestionsClient.test.ts`：1043/1043 PASS — 误判 backlog premise 错误，撤条目。5/7 11:51 Codex Reviewer 在 BL-021 reverifying 阶段实际跑测试，**真复现** `TypeError: Cannot read properties of undefined (reading 'getItem')`。两侧 vitest pool 配置差异（forks vs threads / setup 时序）导致 stub 在 reviewer 环境下未及时初始化。Generator 5/7 13:00 fix-round 1 (`commit 9fa2a49`) 实装 Map-backed 自实装 stub，PASS @ Codex reverifying da94b73。
+
+**两条新规分别防的是：**
+
+1. **(v0.9.15 #1) 跨环境复现：** 任何"测试 fail / PASS / 覆盖"断言必须**多 pool 实地跑** + 至少模拟 reviewer 环境配置，不能只跑自己默认 pool。
+2. **(v0.9.15 #2) Stub environment-agnostic：** stub 设计阶段就要假定"任意 pool / 任意启动顺序" — 用 Map-backed 自实装数据结构消除 jsdom / Node 全局 init 时机依赖。`commit 9fa2a49` 是 Map-backed localStorage stub 的范式实装，可作模板。
 
 **规格引用实际代码时必须：**
 - 用 ` ```sql ` / ` ```ts ` 等代码块贴真实片段
