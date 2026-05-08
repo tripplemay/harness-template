@@ -5,6 +5,24 @@
 
 ---
 
+## v0.9.17 — 2026-05-08（BL-012 audit 沉淀，1 条 learning）
+
+**来源批次：**
+- BL-012-apify-kol-integration v2 spec 修订前 Planner 旁路任务 audit (462 行 docs/reviews/apify-fork-audit-2026-05-08.md)
+- 触发：.auto-memory/project-status.md:16 记录 5/7 fork audit 但仓库 0 实物支撑（撞 5/7 fork 实物 Apify→TikHub 全迁移 + 新增 X 平台 4 平台齐全 vs 记忆"3 平台分流"）
+
+**触发原因：**
+- 既有 v0.9.14 铁律 1 已覆盖 spec / audit / readiness-report 起草前 grep 实物状态，但**对项目内 `.auto-memory/` 涉及外部协作方的记忆条目**仍存在盲区
+- Planner 默认信任记忆 = 信任前一轮写入的快照；但外部协作方 / 第三方仓库可能在记忆写入后被独立更新（5/7 fork 16:57 update vs 5/7 ~14:00 记忆写入 = ~3 小时差，足以让 Apify→TikHub 全迁移 + X 平台新增完成）
+- 不沉淀的成本：未来 Planner 起 spec 时盲信记忆 → spec 字面与外部实物脱节 → Generator 撞实物差异 → fix-round / spec 修订成本 / 上线 buffer 浪费
+- BL-012 5/8 02:00 Planner 旁路 audit 后用户决议 v2 修订 spec（13 features Stage 1.5 admin preview + 决策门 + Stage 2 真接入）— 是 v0.9.17 在实战中应用的范式
+
+**变更：**
+- 修改 `framework/harness/planner.md` 铁律 1 检查矩阵：新增 1 行（v0.9.17）— 「`.auto-memory/project-status.md` / `session_notes` 涉及外部协作方/第三方仓库/跨项目状态的条目」核查动作 `gh api` / `git log --all --since` / `curl health` + 时间戳 ≥3 天必查；含 BL-012 5/7→5/8 实战反面案例段（fork repo 5/7 16:57 update vs 记忆 ~14:00 写入 = stale），追加 v0.9.17 反面案例段
+- 归档 `framework/archive/proposed-learnings-archive-v0.9.17.md`（含完整候选 + BL-012 5/7→5/8 时间线 + 与 v0.9.14 铁律 1 关系延伸表）
+
+---
+
 ## v0.9.16 — 2026-05-08（BL-052 verifying P5 裁决沉淀，1 条 learning）
 
 **来源批次：**
