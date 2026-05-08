@@ -5,6 +5,40 @@
 
 ---
 
+## v0.9.19 — 2026-05-08（BL-012 F002 fix-round 2 沉淀，1 条 learning）
+
+**来源批次：**
+- BL-012-apify-kol-integration F002 fix-round 2 (commit `894a303`) — 用户 5/8 19:00 prod 实地审视报告 zod safeParse 41 fields error
+- 触发：F002 ApifyKolItemSchema 严格化（`externalUrls: z.array(z.string())` + `aggregatorLinks: z.record(...)`）通过单测但与 prod 真数据 fork 端 fork 实物 union shape 不一致
+
+**触发原因：**
+- v0.9.14 铁律 1 已覆盖"spec / audit 起草前 grep 实物状态"，但**对外部 API response shape 仍存在盲区** — 文档注释含糊（如 "多外链原结构"）是 union 信号，audit 阶段未 SSH 拉真数据 row sample 验证 → spec / zod schema 严格化 → prod 真数据触发 parse error
+- 单测 mock 用文档假设 string array shape 全过 → Reviewer signoff PASS → 直到 prod 真数据 50 KOL 中 41 row externalUrls 是 `[{url, title}]` 触发 zod safeParse 失败 → preview 页加载失败
+- BL-012 5/8 19:00 → 19:13 fix-round 2 实战：union schema + passthrough + 2 单测覆盖 → reverify PASS
+
+**变更：**
+- 修改 `framework/harness/planner.md` 铁律 1 检查矩阵：新增 1 行（v0.9.19）— 「外部 API response zod schema（fork / 第三方 / 跨服务 GET 响应）」核查动作 `SSH 拉 ≥5-10 真数据 row sample` + `JSON parse 验证 zod schema 兼容` + 文档注释含 union 信号必须 `z.union([...]) + .passthrough()`；含 BL-012 F002 案例
+- 归档 `framework/archive/proposed-learnings-archive-v0.9.19.md`（含完整候选 + BL-012 F002 5/8 19:00→19:13 时间线 + zod schema before/after 对比）
+
+---
+
+## v0.9.18 — 2026-05-08（BL-012 F001 fix-round 1 沉淀，1 条 learning）
+
+**来源批次：**
+- BL-012-apify-kol-integration F001 fix-round 1 (commit `4b4ae96`) — Reviewer 5/8 15:32 verifying 报 admin auth gate role mismatch
+- 触发：F001 spec 写 `session?.user?.role === 'admin'` 通过单测（mock 用 `'admin'` 字面），但 staging seed 真实创建 `tenant_admin` 角色 → admin 真账户访问 /[locale]/admin/apify-preview 被踢回 dashboard
+
+**触发原因：**
+- v0.9.14 铁律 1 已覆盖"spec 起草前 grep 实物代码状态"，但**对 auth role / 权限 enum / DB schema 字段值仍存在盲区** — Spec 起草 / 实装时若依赖字面字符串 `'admin'` / `'user'` 等假设而非 `grep auth.ts / src/lib/auth/ / schema.prisma / seed.ts` 实物核查，会撞真实 enum 不匹配
+- KOLMatrix architecture.md §3.3 明示 enum 是 `platform_admin / tenant_admin / marketer / client` 4 值，但 BL-012 F001 spec 起草时假设字面 `'admin'`（业界通用习惯）→ Generator 字面实装通过单测 → staging 真账户访问被踢回 → fix-round 1 修
+- BL-012 5/8 ~15:39 fix-round 1 实战：role check 改 `['platform_admin', 'tenant_admin'].includes(role)` + 7 测试 case 含锁 'admin' literal MUST reject 防回归 → reverify PASS
+
+**变更：**
+- 修改 `framework/harness/planner.md` 铁律 1 检查矩阵：新增 1 行（v0.9.18）— 「auth role enum / 用户角色 / 权限 enum / DB schema 字段值」核查动作 `grep -rn "role" src/auth.ts src/lib/auth/ prisma/schema.prisma prisma/seed.ts`；含 BL-012 F001 案例
+- 归档 `framework/archive/proposed-learnings-archive-v0.9.18.md`（含完整候选 + BL-012 F001 5/8 15:32→15:39 时间线 + role check before/after 对比）
+
+---
+
 ## v0.9.17 — 2026-05-08（BL-012 audit 沉淀，1 条 learning）
 
 **来源批次：**
