@@ -378,3 +378,31 @@ nvm use                          # 不一致时切换；无 nvm 装 Node 20 LTS
 **反面（BL-034 F007/F008 命中）：** `src/app/api/health/__tests__/route.test.ts:18` 与 `tests/integration/db-platform-admin-nullif.test.ts:13` 各 1 个 unused import warning（'afterEach' / 'beforeEach'）— 按本矩阵 = unused-import + ≤3 个 → **Soft-watch 入 BL-034 signoff §Soft-watch S8**，不阻断 done。下批次（BL-035 或更后）顺手清。
 
 **来源：** BL-034 F007 + F008 测试文件 unused import 入 Soft-watch S8。Reviewer 在 reverifying 阶段无明文判据 → 提案 v0.9.12 沉淀（用户 2026-05-05 全 Accept）。
+
+---
+
+## 18. E2E suite 稳定性诊断（v0.9.20 — BL-060 沉淀）
+
+**背景：** BL-060 fix-round 1 单点放宽 timeout/正则只缓解症状，整组 E2E 仍 FAIL；fix-round 2 抽 `tests/e2e/<role>.setup.ts` + 各 spec opt-in `test.use({ storageState })`，N 次 login 收敛 1 次后 suite PASS。
+
+**诊断信号：** 单例 PASS / 整组 FAIL = **suite-level isolation 问题**（不是 case 内容/正则问题）。
+
+**候选根因：**
+- 每 case `beforeEach` 重 login 累积抖动
+- staging 8GB RAM 资源压力
+
+**根治方案：** 抽 `tests/e2e/<role>.setup.ts` + 各 spec opt-in `test.use({ storageState })`，N 次 login 收敛 1 次。
+
+**反模式：** 单点放宽 timeout / 正则只缓解症状，不解决 suite-level isolation。
+
+**来源：** BL-060 fix-round 1（cc82a54 正则放宽失败）→ fix-round 2（f75cafd storageState PASS）。
+
+---
+
+## 19. SQL 跨 tenant 全量查询 RLS 注意（v0.9.20 — BL-061 沉淀）
+
+**背景：** BL-061 F003 验收时 Reviewer 用 `kolmatrix_app` role + Prisma RLS 跨 tenant 查 audit_log 返回 0 行，误判为数据缺失；实际是 RLS 视角限制。
+
+**处理规则：** 跨 tenant 全量验收 SQL 必须 `sudo -u postgres psql kolmatrix(_staging)` superuser bypass RLS。普通 `kolmatrix_app` role + Prisma RLS 跨 tenant 看 0 行（不是数据缺失，是 RLS 视角限制）。Reviewer only-read 验收尤其要走 superuser path。
+
+**来源：** BL-061 F003 Generator 实战发现 + Codex Reviewer signoff 确认。

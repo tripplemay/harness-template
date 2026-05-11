@@ -5,6 +5,22 @@
 
 ---
 
+## v0.9.20 — 2026-05-10（BL-060 沉淀，2 条 learnings）
+
+**来源批次：**
+- BL-060-soft-delete-ui-filter-hotfix（fix-round 1→2 e2e suite-isolation 诊断）
+- BL-061-apify-fork-totallikes-verify（F003 SQL cross-tenant RLS 注意）
+
+**触发原因：**
+- BL-060 fix-round 1 单点放宽 timeout/正则只缓解症状，整组 E2E 仍 FAIL；fix-round 2 抽 storageState 后 suite PASS — suite-level isolation 诊断模式值得沉淀
+- BL-061 F003 验收时 Reviewer 用 kolmatrix_app role 跨 tenant 查 audit_log 返回 0 行，误判为数据缺失；实际是 RLS 视角限制 — superuser bypass 规则值得沉淀
+
+**变更：**
+- 修改 `framework/harness/evaluator.md`：新增 §18 "E2E suite 稳定性诊断" + §19 "SQL 跨 tenant 全量查询 RLS 注意"
+- 同步写入 `.auto-memory/role-context/evaluator.md` + `.auto-memory/role-context/generator.md`
+
+---
+
 ## v0.9.19 — 2026-05-08（BL-012 F002 fix-round 2 沉淀，1 条 learning）
 
 **来源批次：**
