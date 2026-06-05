@@ -395,6 +395,29 @@ find . -name 'generator.md' -not -path '*/node_modules/*' -not -path '*/.git/*'
 
 ---
 
+### 铁律 8：spec 引用外部模型/服务做 E2E acceptance 前必须验证其真实可用（v0.9.21 — aigcgateway BL-IMG-PERSIST-GCS 沉淀）
+
+acceptance 引用**具体外部模型 / 第三方服务**做 E2E（如"用 seedream-3 生成图 → 200"、"调 provider X 的 endpoint → 断言"）时，Planner 必须先确认该模型/服务在目标环境**真实可用**——不只是本地配置项 `enabled`，还要：
+
+- 上游接入配置正确（如火山引擎调用须 `realModelId=ep-xxx` endpoint ID，填模型名恒 404）
+- 不在下线 / deprecated 名单
+- 必要时实测一次（或要求 Generator 实测）返回真实结果后才写入 acceptance
+
+否则该外部断言不进 acceptance，或提供 fallback 模型 / 服务。这是 [铁律 4「写路由前 grep 实物」] 向"外部模型 / 服务运行时可用性"维度的扩展——本地存在 ≠ 运行时可用。
+
+```bash
+# 写外部模型 E2E acceptance 前
+# 1) 确认 alias/channel enabled 且 realModelId 是正确形态（火山：ep- 前缀）
+# 2) 确认不在下线名单（grep deprecated / 运维记忆）
+# 3) 高风险时实测：curl 生产 /v1/models 含该模型 + 生成一次
+```
+
+**反面：** aigcgateway BL-IMG-PERSIST-GCS fix_round2 — spec acceptance 要求 `seedream-3`（http 上游）E2E 200，但该 channel `realModelId` 仍是模型名 `seedream-3.0`（非 ep-ID，火山恒 404）且本就在下线名单 → 验收无法满足 → 多一轮 fix_round 才放宽并改下线。
+
+**来源：** aigcgateway BL-IMG-PERSIST-GCS fix_round2（seedream-3 不可用导致验收返工）。
+
+---
+
 ## status = "done" 时的收尾流程
 
 当 Codex 将 progress.json 置为 `done` 后，Claude CLI 接手执行以下步骤（**必须按顺序**）：

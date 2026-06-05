@@ -5,6 +5,23 @@
 
 ---
 
+## v0.9.21 — 2026-06-05（aigcgateway BL-IMG-PERSIST-GCS 沉淀，2 条 learnings）
+
+**来源批次：**
+- aigcgateway BL-IMG-PERSIST-GCS（生产图片无法下载根治，fix_rounds=2）
+
+**触发原因：**
+- fix_round1：图片签名代理 URL 的 origin 被签成 `0.0.0.0:3000`（Next standalone `request.url` 取监听地址、无视 Host 头）→ 客户端不可达 → Codex FAIL
+- fix_round2：spec acceptance 要求 seedream-3 做 http 上游 E2E，但该模型 realModelId 未配 ep-ID（火山恒 404）且本就在下线名单 → 验收返工
+
+**变更：**
+- 新增 `harness/planner.md` §铁律 8：spec 引用外部模型/服务做 E2E acceptance 前必须验证其真实可用（本地 enabled ≠ 运行时可用；火山须 ep-ID + 非下线名单）
+- 新增 `harness/generator.md` §9：Next.js standalone 模式 `request.url` 的 origin 取监听地址，反代后构造对外绝对 URL 须从 `X-Forwarded-Host`/`X-Forwarded-Proto` 推导（附 `resolveRequestOrigin` 范式 + nginx 前置确认）
+
+> 注：本条同步发现 aigcgateway 旧线（v0.9.6–v0.9.10，铁律 1.1–1.8 等）未并入本 canonical 线，暂存于 aigcgateway clone 的 `backup-local-v0.9.5-line-20260605` 分支，待后续单独 reconcile。
+
+---
+
 ## v0.9.20 — 2026-05-10（BL-060 沉淀，2 条 learnings）
 
 **来源批次：**

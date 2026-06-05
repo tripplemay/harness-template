@@ -237,3 +237,36 @@ fontSize={(d: WordcloudDatum) => d.value}
 ```
 
 来源：KOLMatrix B5 fixing-1（commit f8fca4b）。
+
+## 9. Next.js standalone 模式 `request.url` 的 origin 取监听地址，反代后须从 forwarded headers 推导（v0.9.21 — aigcgateway BL-IMG-PERSIST-GCS 沉淀）
+
+**背景：** Next.js **standalone 输出模式**（`output: "standalone"`）下，route handler 里 `new URL(request.url).origin` 取的是**进程监听地址**（如 `0.0.0.0:3000` / `localhost:port`），**无视 `Host` 头**。任何据此构造对外**绝对 URL** 的代码，在反向代理（nginx / LB）后都会生成客户端不可达的地址。
+
+**典型受害场景：**
+
+- 签名图片 / 文件代理 URL（返回给客户端去 GET）
+- webhook 回调地址、邮件 / 通知里的深链
+- OAuth redirect_uri、分享链接
+
+**规律：** 构造对外绝对 URL 必须从转发头推导公网 origin，而非 `request.url`：
+
+```typescript
+function resolveRequestOrigin(request: Request): string {
+  const h = request.headers;
+  const xfHost = h.get("x-forwarded-host") ?? h.get("host");
+  if (xfHost) {
+    const proto = h.get("x-forwarded-proto")
+      ?? (xfHost.startsWith("localhost") || xfHost.startsWith("127.") ? "http" : "https");
+    return `${proto}://${xfHost}`;
+  }
+  return process.env.NEXT_PUBLIC_GATEWAY_ORIGIN
+    ?? process.env.SITE_URL
+    ?? new URL(request.url).origin; // 最后兜底
+}
+```
+
+**前置确认：** 反代须转发 `proxy_set_header Host $host;` + `proxy_set_header X-Forwarded-Proto $scheme;`（否则推导仍失真）。
+
+**反面：** aigcgateway BL-IMG-PERSIST-GCS fix_round1 — 图片代理签发 URL origin=`0.0.0.0:3000` → 客户端不可达 → Codex FAIL → fix_round1 才加 `resolveRequestOrigin`（commit 400f2af）。
+
+来源：aigcgateway BL-IMG-PERSIST-GCS fix_round1。
