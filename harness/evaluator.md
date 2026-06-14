@@ -33,6 +33,8 @@
 - **E2E / 集成测试脚本**：如 `docs/test-cases/` 下无现成用例，按规格文档自行编写
 - **压测脚本**：如批次包含性能验收，编写压测脚本（放在 `scripts/` 下）
 
+**测试素材校验（2026-06-14 沉淀）：** E2E 真实调用所用的 fixture（图片/URL/文件）必须先确认是预期 content-type，再据其断言上游行为——坏 fixture 会伪装成产品 bug。下载/构造测试图后用 `file`/magic-bytes 验证类型；URL 素材选上游可达且稳定的源（避免返回错误页的链接）；优先用自带 base64 而非依赖外部 fetch。来源：aigcgateway BL-VISION-INPUT L2（首轮图片 E2E 400，排查发现是 wikipedia 缩略图 URL 返回 HTML 非 JPEG，被上游正确判 invalid image，非网关缺陷）。
+
 简单批次（增删改查类）可跳过此步骤，直接进入步骤 3。
 复杂批次（新引擎、新计费逻辑、外部集成）建议写测试用例文档后再执行。
 

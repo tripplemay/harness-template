@@ -5,6 +5,19 @@
 
 ---
 
+## v0.9.22 — 2026-06-14（aigcgateway BL-VISION-INPUT 沉淀，1 条 learning）
+
+**来源批次：**
+- aigcgateway BL-VISION-INPUT（网关图片输入/vision，一轮通过，fix_rounds=0）
+
+**触发原因：**
+- L2 首轮图片输入 E2E 返回 400，排查后发现是测试图坏了（wikipedia 缩略图 URL 返回 HTML 错误页而非 JPEG，被 base64 后上游正确判 invalid image）——坏 fixture 伪装成产品 bug，换真实 JPEG 后全 200。
+
+**变更：**
+- `harness/evaluator.md` §2 编写测试：新增「测试素材校验」——E2E fixture（图片/URL/文件）必须先用 `file`/magic-bytes 确认是预期 content-type 再断言上游行为；URL 选上游可达稳定源；优先自带 base64 而非外部 fetch。
+
+---
+
 ## v0.9.21 — 2026-06-05（aigcgateway BL-IMG-PERSIST-GCS 沉淀，2 条 learnings）
 
 **来源批次：**
