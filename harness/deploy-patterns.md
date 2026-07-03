@@ -434,6 +434,34 @@ Planner johnsong 在 BL-024 prod redeploy ops 准备阶段（2026-05-05 23:00）
 
 ---
 
+## 6. 数据命名/结构变更类修复：部署立即触发 on-boot 后台任务，需配套幂等数据修复（v0.9.23 — aigcgateway BL-SYNC-ADAPTERTYPE-FALLBACK 沉淀）
+
+### 6.1 坑
+
+当修复**改变已存在数据的命名 / 结构规则**（如给某类记录的 canonical name 加前缀、改字段派生逻辑），且项目存在 **on-boot / 定时后台任务**（如 model sync 在 `instrumentation.ts` boot 时跑、cron 回填）时：
+
+**部署 = `git reset --hard` + 重启 → 后台任务立即用新代码跑一次**，在"旧数据（旧命名）+ 新逻辑（新命名）"之间产生 **orphan / 中间态**。
+
+aigcgateway BL-SYNC-ADAPTERTYPE-FALLBACK fix-round-1 实例：修复让 guangtech 模型 canonical 从裸 `gpt-5.5` 改为 `guangtech/gpt-5.5`。部署后 boot sync 立即跑 → 用新命名建了 6 个 `guangtech/*` 模型行，但**活跃 channel 仍按 `realModelId` 匹配、挂在旧的裸名模型上** → 新模型 orphan（0 channel）、旧模型仍带活跃 channel。一次性重命名脚本因此必须"先删 orphan 再 rename"。
+
+### 6.2 规律
+
+- **数据命名/结构变更类修复必须配套幂等数据修复脚本**（committed，非临时 SQL），把存量旧数据迁到新规则
+- **修复脚本要能自愈部署后 boot 任务产生的中间态**（如"目标名已被 orphan 占用 → 无引用则删 orphan 再迁"），否则脚本会因"目标已存在"卡住
+- **时序：先部署（让 prod 跑新代码）→ 再跑数据修复**。反序（先改数据、后部署）会被部署前旧代码的 boot 任务打回旧规则
+- 脚本必须**幂等**：dry-run 默认 + 复跑无变化，Reviewer 可安全复验
+
+### 6.3 Planner spec 起草 / Generator 实装 / Reviewer 复验 checklist
+
+- [ ] 本批次是否改了"已存在数据的命名/派生规则"？是 → 必须配套数据修复脚本（feature 或 ops 步骤显式列出）
+- [ ] 项目有 on-boot / cron 后台任务吗？会消费/重算被改的数据吗？→ acceptance 标注"部署后 boot 任务时序"
+- [ ] 修复脚本处理 orphan / 目标已存在 / 共享引用等中间态（护栏跳过或自愈）
+- [ ] 脚本幂等（dry-run 默认，复跑 0 变更）；Reviewer 复验含"脚本 dry-run 待处理 = 0"
+
+**来源：** aigcgateway BL-SYNC-ADAPTERTYPE-FALLBACK fix-round-1（部署后 boot sync 建 orphan，一次性重命名脚本增强为删 orphan 再 rename）。
+
+---
+
 ## 来源
 
 - KOLMatrix BI2-F002 两轮重裁决 + Round 2 实测证伪（2026-04-20）
@@ -455,3 +483,4 @@ Planner johnsong 在 BL-024 prod redeploy ops 准备阶段（2026-05-05 23:00）
 | 2026-05-01 | §1 扩展 PM2 6.0.14 env_file anti-pattern；§3 完整链 checklist（schema + enrich + SHA 对齐边界）；§4 Visual baseline regen 注意事项 | KOLMatrix B5 7 轮 fixing + MVP-internal-demo-prep 3 轮 fixing 累积 |
 | 2026-05-05 | §5 新 auth-gated endpoint 配套 deploy script（v0.9.12，含 graceful-degrade 模板 + bash 旧 bytecode 重启 deploy run）| KOLMatrix BL-034 F007 deploy-staging.sh 死循环 + bash bytecode 双坑 |
 | 2026-05-06 | §5.1 spec acceptance 改 deploy-script 时同 commit 必须改对应 yml workflow（v0.9.13，含 Planner spec lock checklist + Generator 实装 checklist + Reviewer L2 deploy log warning 抓取强制）| KOLMatrix BL-024-F006 retroactive hotfix（BL-034 F001 root cause 1+ 周后实地核查发现）|
+| 2026-07-03 | §6 数据命名/结构变更类修复：部署立即触发 on-boot 后台任务产生 orphan/中间态，须配套幂等数据修复脚本（自愈 orphan + 先部署后修数据 + dry-run 默认）| aigcgateway BL-SYNC-ADAPTERTYPE-FALLBACK fix-round-1（v0.9.23）|

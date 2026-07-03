@@ -5,6 +5,21 @@
 
 ---
 
+## v0.9.23 — 2026-07-03（aigcgateway BL-SYNC-ADAPTERTYPE-FALLBACK 沉淀，2 条 learnings）
+
+**来源批次：**
+- aigcgateway BL-SYNC-ADAPTERTYPE-FALLBACK（后台新增 provider guangtech 模型同步失败根治，fix_rounds=1）
+
+**触发原因：**
+- 首轮 FAIL：spec D2 断言适配器返回的 `SyncedModel.name`（带 `provider/` 前缀）会入库，但 `reconcile()` 的 `resolveCanonicalName(modelId)` 丢弃它、直接存裸 modelId → 命名前缀从未落库 → fix-round-1。
+- fix-round-1 部署坑：部署后 boot sync 立即用新命名逻辑跑，在旧裸名数据 + 新前缀逻辑间建了 6 个 orphan 模型 → 数据修复脚本需自愈 orphan。
+
+**变更：**
+- `harness/planner.md` §铁律 9：spec 断言某值"写入 DB / 流向下游"前必须追踪实际写入路径（grep 落点列反查真实来源，警惕 canonical/reconcile/transform 中间层重算/丢弃；铁律 1 向数据流终点维度扩展）。
+- `harness/deploy-patterns.md` §6：数据命名/结构变更类修复——部署会立即触发 on-boot 后台任务产生 orphan/中间态，须配套幂等数据修复脚本（自愈 orphan + 先部署后修数据 + dry-run 默认 + Reviewer 复验 dry-run=0）。
+
+---
+
 ## v0.9.22 — 2026-06-14（aigcgateway BL-VISION-INPUT 沉淀，1 条 learning）
 
 **来源批次：**

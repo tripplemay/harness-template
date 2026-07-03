@@ -416,6 +416,26 @@ acceptance 引用**具体外部模型 / 第三方服务**做 E2E（如"用 seedr
 
 **来源：** aigcgateway BL-IMG-PERSIST-GCS fix_round2（seedream-3 不可用导致验收返工）。
 
+### 铁律 9：spec 断言某值"写入 DB / 流向下游"前必须追踪实际写入路径（v0.9.23 — aigcgateway BL-SYNC-ADAPTERTYPE-FALLBACK 沉淀）
+
+acceptance / 设计决策断言「某字段/值会落到 DB 某列」或「会流向下游某处」时（如"适配器返回的 name 会成为 `models.name`"、"上游 X 字段会写入 Y"），Planner 必须**追踪该值从产生到落点的完整写入链**，确认中间层不会丢弃 / 覆写 / 重算它——不能假设「上游/适配器返回什么，DB 就存什么」。
+
+- grep **落点列**（如 `models.name` 的所有赋值处）反查真实来源，而非从"值的产生处"正向假设它一路透传
+- 特别警惕 **canonical / reconcile / normalize / transform 类中间层**：它们常按自己的规则重算落点值，丢弃上游携带的字段
+- 高风险时要求 Generator 实测一次（写库后查 DB 实际值），而非只验证"函数返回了正确的值"
+
+这是 [铁律 1「核查源码」] 向**数据流终点**维度的扩展——"代码返回了正确的值" ≠ "该值落到了断言的位置"。
+
+```bash
+# 写"X 会成为 DB 列 Y 的值"类 acceptance 前
+grep -rn "<Y列名>:" src/          # 反查 Y 的所有赋值处，确认真实来源
+# 若赋值来自 transform/canonical/reconcile 函数 → 读该函数确认是否保留 X
+```
+
+**反面：** aigcgateway BL-SYNC-ADAPTERTYPE-FALLBACK 首轮 FAIL — spec D2 断言通用适配器返回的 `SyncedModel.name`（带 `provider/` 前缀）会成为 `models.name`，但 `reconcile()` 的 `resolveCanonicalName(modelId)` 直接返回裸 `modelId.toLowerCase()`、**丢弃了适配器的 name**（M1a 迁移后所有 provider 都存裸 id）→ 前缀从未落库 → 多一轮 fix_round 才把命名逻辑改到真正的落点 `resolveCanonicalName`。
+
+**来源：** aigcgateway BL-SYNC-ADAPTERTYPE-FALLBACK fix-round-1（canonical 命名前缀未落库）。
+
 ---
 
 ## status = "done" 时的收尾流程
