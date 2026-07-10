@@ -1,20 +1,39 @@
 # Harness 状态机规则（核心，不可修改）
 
 ## 你是谁
-你是一个多工具协作编码系统的执行者。每次启动时，先读取 progress.json 判断当前阶段，再执行对应角色的指令文件。
+你是一个多角色协作编码系统的执行者。每次接手工作时，先读取 progress.json 判断当前阶段，再执行对应角色的指令文件。
 
-## 工具与角色对应
+## 角色与执行形态（v1.0）
 
-两个工具通过 `progress.json` 交接，不直接通信：
+三个角色，两条执行车道。角色定义不变（无人评估自己的工作），执行形态随工具能力升级：
 
-| 工具 | 角色 | 负责阶段 |
-|---|---|---|
-| Claude CLI（Claude Code） | Planner + Generator（需求拆解 + 功能实现 + 修复 + 记忆维护） | `new` / `planning` / `building` / `fixing` / `done` |
-| Codex | Evaluator（测试设计 + 执行 + 验收 + 复验） | `verifying` / `reverifying` |
+| 角色 | 职责 | 快车道执行形态（默认） | 慢车道执行形态 |
+|---|---|---|---|
+| **Planner** | 需求拆解、规格文档、裁决、记忆维护 | 主上下文（建议配合 plan mode 确认规格） | 独立会话 |
+| **Generator** | 功能实现、修复 | 主上下文；独立 feature 可并行 subagent + worktree | 独立会话 |
+| **Evaluator** | 测试设计 + 执行 + 验收 + 复验 | **上下文隔离的 evaluator subagent**（fresh context） | 独立会话 / 独立实例（含外部工具） |
 
-**职责边界说明：**
-- Claude CLI 负责全流程：需求拆解、规格文档、功能实现、修复、记忆维护。不写任何测试。
-- Codex 拥有完整的「测试域」——设计测试用例、编写测试脚本、执行测试、分析结果、输出报告。
+**两条车道：**
+
+- **快车道（同会话，默认）：** 单个 Claude Code 会话承载整个批次。Planner / Generator 在主上下文流转，Evaluator 以隔离 subagent 运行。阶段切换 = 上下文隔离切换，不需要结束会话。
+- **慢车道（git 总线）：** 角色分布在不同会话 / 机器 / 工具上，通过 git 同步状态文件异步交接。行为与 v0.x 相同。
+
+**车道选择规则（Planner 在 planning 末尾确认）：** 默认快车道。命中以下任一 → 慢车道：
+
+1. `role_assignments` 把某角色指派给了其他实例（其他机器 / 其他工具）
+2. 批次预计跨多个工作日 / 多会话（大型重构、Path A 串行多批次）
+3. 用户明确要求独立实例验收（正式发布批次建议）
+
+两条车道下，**progress.json / features.json 在每个阶段边界都必须落盘并 commit**——快车道也不豁免。状态文件是审计轨迹和断点恢复的基础，不是慢车道专属的通信管道。
+
+## 独立性铁则（「无自评」的 v1.0 实现）
+
+原则不变：**没有任何 agent 评估自己的工作。** 独立性来自上下文隔离，不再依赖「第二个产品」：
+
+1. **Evaluator 必须 fresh context**：以隔离 subagent 或独立会话运行，不得继承实现过程的对话上下文
+2. **评估基于实物**：代码、测试运行输出、staging 实测——不得基于实现者的叙述或 commit message
+3. **结论原样落盘**：Evaluator 的 evaluator_feedback 与验收报告由 Evaluator 直接写入 progress.json / `docs/test-reports/`；主上下文（编排者）不得改写、筛选、软化任何结论
+4. **Evaluator 不修改产品代码**：只写测试产物（`tests/` / `scripts/test/`）与报告（`docs/test-cases/` / `docs/test-reports/`）
 
 ## Feature 执行者（executor）
 
@@ -22,78 +41,81 @@ features.json 中每条功能必须声明 `executor` 字段：
 
 | executor 值 | 含义 | 由谁执行 | 执行阶段 |
 |---|---|---|---|
-| `"generator"` | 代码实现类（默认值） | Claude CLI | `building` |
-| `"codex"` | 执行 / 评估类 | Codex | `verifying` |
+| `"generator"` | 代码实现类（默认值） | Generator | `building` |
+| `"evaluator"` | 执行 / 评估类 | Evaluator | `verifying` |
 
-**executor:codex 的适用场景：** 压力测试执行、code review、安全审计、E2E 测试运行、性能分析报告。
-这类任务的交付物是"结果报告"而非代码，由 Generator 提供工具/脚本，Codex 操作工具产出结论。
+> 兼容说明：历史项目的 `"codex"` 视为 `"evaluator"` 的别名，读到时等价处理；新批次一律写 `"evaluator"`。
+
+**executor:evaluator 的适用场景：** 压力测试执行、code review、安全审计、E2E 测试运行、性能分析报告。
+这类任务的交付物是"结果报告"而非代码，由 Generator 提供工具/脚本，Evaluator 操作工具产出结论。
 
 ## 批次类型
 
 | 批次类型 | 特征 | 状态流转 |
 |---|---|---|
 | 普通批次 | 全部 `executor:generator` | `planning → building → verifying → done` |
-| 混合批次 | 部分 `generator`，部分 `codex` | `planning → building → verifying → done` |
-| Codex-only 批次 | 全部 `executor:codex` | `planning → verifying → done`（跳过 building） |
+| 混合批次 | 部分 `generator`，部分 `evaluator` | `planning → building → verifying → done` |
+| Evaluator-only 批次 | 全部 `executor:evaluator` | `planning → verifying → done`（跳过 building） |
 
 **判断规则（Planner 在 planning 末尾执行）：**
 - features.json 中存在任意一条 `executor:generator` → status 设为 `building`
-- features.json 中全部为 `executor:codex` → status 直接设为 `verifying`（Codex-only 批次）
+- features.json 中全部为 `executor:evaluator` → status 直接设为 `verifying`（Evaluator-only 批次）
 
-## 启动流程（每次必须按顺序执行）
+## 启动流程
 
-### 第零步：同步远端，读最新文件
+### 新会话启动（每个新会话必须按顺序执行）
 
-**第一：先从远端拉取最新代码（所有 agent 通用）**
+**第零步：同步远端，读最新文件**
 
 ```bash
 git pull --ff-only origin main
 ```
 
-`progress.json`、`features.json`、`.auto-memory/`、`harness-rules.md` 等状态机文件均通过 git 在所有 agent 之间同步。不先拉取，读到的可能是其他 agent 推送之前的旧状态，导致阶段误判或重复工作。
+`progress.json`、`features.json`、`.auto-memory/`、`harness-rules.md` 等状态机文件均通过 git 在所有实例之间同步。慢车道下不先拉取，读到的可能是其他实例推送之前的旧状态；单机快车道下此命令输出 `Already up to date.`，无副作用，仍建议执行（防跨设备切换后读旧状态）。
 
-> 同机场景下此命令输出 `Already up to date.`，无副作用，仍需执行。
-
-**第二：从磁盘重新读取以下文件，不得使用任何缓存版本：**
-- `.agent-id` — 当前 agent 的身份标识（文件不存在则 myId = null）
-- `.agents-registry` — 项目 agent 注册表（Planner 角色分配时使用）
+**然后从磁盘重新读取以下文件，不得使用任何缓存版本：**
+- `.agent-id` — 当前实例的身份标识（文件不存在则 myId = null）
+- `.agents-registry` — 项目实例注册表（Planner 角色分配时使用）
 - `progress.json` — 当前阶段和进度
 - `features.json` — 功能列表和状态
 - `harness-rules.md` — 本文件自身
 
-**第三：按分层规则加载共享记忆：**
+**按分层规则加载共享记忆：**
 - **T0（必读）：** `.auto-memory/MEMORY.md`（索引）+ `project-status.md` + `environment.md`
 - **T1（按角色）：** 确定当前角色后，加载 `.auto-memory/role-context/{角色}.md`
-- **T2（按需）：** 仅当 MEMORY.md 索引中标注的触发条件命中时加载对应文件
+- **T2（按需）：** 仅当 MEMORY.md 索引中标注的触发条件命中时加载对应文件（含 `framework/patterns/` 技术域 pattern）
+
+### 同会话阶段切换（快车道）
+
+同一会话内从一个阶段进入下一个阶段时，**不需要重复第零步**。但必须：
+
+1. 上一阶段的状态变更已写入 progress.json / features.json 并 commit
+2. 切换到 Evaluator 时，以**隔离 subagent** 启动（见独立性铁则），并在 subagent prompt 中要求其自行从磁盘读取状态文件与代码——不得把实现过程的叙述作为其输入
+3. 阶段边界在对话中向用户明示（"building 完成，进入 verifying，启动隔离验收"）
 
 ### 第一步：识别身份与角色
 
-`.agent-id` 文件格式为按工具类型分行：
+`.agent-id` 文件格式为按实例类型分行：
 ```
-cli: Andy
-codex: Reviewer
+main: Andy
+evaluator: Reviewer
 ```
-- Claude CLI 读取 `cli:` 行的值作为 myId
-- Codex 读取 `codex:` 行的值作为 myId
+- 主实例（Planner + Generator）读取 `main:` 行的值作为 myId
+- 独立 evaluator 实例读取 `evaluator:` 行的值作为 myId
 - 文件不存在或对应行不存在则 myId = null
+- **快车道单实例场景：** 只需 `main:` 行；evaluator subagent 无独立身份，验收产物署名 `{myId}/evaluator-subagent`
 
-基于 myId 和 `progress.json`（status + role_assignments），判断当前 agent 的角色。
+> 兼容说明：历史格式 `cli:` 等价 `main:`，`codex:` 等价 `evaluator:`。
+
+基于 myId 和 `progress.json`（status + role_assignments），判断当前实例的角色。
 
 ### 第 1.2 步：自动注册（myId 有值时执行）
 
-如果 myId 有值，检查 `.agents-registry` 中对应工具类型（cli / codex）下是否已包含 myId：
+如果 myId 有值，检查 `.agents-registry` 中对应实例类型（main / evaluator）下是否已包含 myId：
 - **已存在** → 跳过
 - **不存在** → 将 myId 追加到对应类型列表中，保存文件，commit 并 push
 
-```bash
-# 示例：CLI agent "Mark" 首次启动，自动注册
-# .agents-registry 变更：cli 列表追加 "- Mark"
-git add .agents-registry
-git commit -m "chore: auto-register agent Mark (cli)"
-git push origin main
-```
-
-**注意：** 此步骤仅做追加，不删除已有条目。移除不再使用的 agent 由用户手动编辑。
+**注意：** 此步骤仅做追加，不删除已有条目。移除不再使用的实例由用户手动编辑。
 
 ### 第 1.5 步：检查用户是否直接指派了独立任务
 
@@ -122,27 +144,27 @@ git push origin main
 
 ```
 如果 role_assignments 不存在或为 null：
-  → 按默认映射执行（Claude CLI = planner + generator，Codex = evaluator）
+  → 快车道默认映射（主实例 = planner + generator + 编排 evaluator subagent）
 
 如果 role_assignments 存在：
   如果 myId = null（未配置 .agent-id）：
     → 不主动执行任何角色，告知用户"检测到 role_assignments 但未配置 .agent-id，请先创建"
   如果 myId 有值：
     → 匹配 role_assignments 中的角色，加载对应角色文件
-    → myId 不在当前阶段对应角色中 → 告知用户"本阶段工作已分配给其他 agent（{对应 agent-id}）"，等待指令
+    → myId 不在当前阶段对应角色中 → 告知用户"本阶段工作已分配给其他实例（{对应 agent-id}）"，等待指令
 ```
 
-**默认映射（无 role_assignments 时）：**
+**默认映射（无 role_assignments 时，快车道）：**
 
-| status | 执行工具 | 加载文件 | 动作 |
+| status | 执行形态 | 加载文件 | 动作 |
 |---|---|---|---|
-| `new` | Claude CLI | planner.md | 拆解需求，生成 features.json，写 spec |
-| `planning` | Claude CLI | planner.md | 继续 planning（上次中断时） |
-| `building` | Claude CLI | generator.md | 按功能列表逐条实现 |
-| `verifying` | Codex | evaluator.md | 首轮验收 |
-| `fixing` | Claude CLI | generator.md | 根据 evaluator_feedback 修复 |
-| `reverifying` | Codex | evaluator.md | 复验，写 signoff 报告 |
-| `done` | Claude CLI | planner.md | 更新记忆，处理 proposed-learnings，询问下一批次 |
+| `new` | 主上下文 | planner.md | 拆解需求，生成 features.json，写 spec |
+| `planning` | 主上下文 | planner.md | 继续 planning（上次中断时） |
+| `building` | 主上下文（可并行 subagent） | generator.md | 按功能列表实现 |
+| `verifying` | **隔离 evaluator subagent** | evaluator.md | 首轮验收 |
+| `fixing` | 主上下文 | generator.md | 根据 evaluator_feedback 修复 |
+| `reverifying` | **隔离 evaluator subagent** | evaluator.md | 复验，写 signoff 报告 |
+| `done` | 主上下文 | planner.md | 更新记忆，处理 proposed-learnings，询问下一批次 |
 
 **阶段与角色的对应关系：**
 
@@ -153,13 +175,13 @@ git push origin main
 | `verifying` / `reverifying` | evaluator |
 
 ### 第三步：读取对应角色文件
-根据第二步的判断结果加载 planner.md / generator.md / evaluator.md 并严格执行。
+根据第二步的判断结果加载 planner.md / generator.md / evaluator.md 并严格执行。并行编排、fan-out 验收、后台任务的具体做法见 `orchestration-patterns.md`。
 
-### 第四步：完成后更新 progress.json
-每个阶段结束后必须更新 progress.json 中的 status 字段，再结束会话。
+### 第四步：阶段边界更新 progress.json
+每个阶段结束后必须更新 progress.json 中的 status 字段并 commit，再进入下一阶段或结束会话。快车道同会话流转也不得跳过。
 
 ### 第五步：会话结束时更新共享记忆（所有角色通用）
-每次会话结束前（包括上下文不足 20% 被迫结束时），执行以下两项：
+每次会话结束前，执行以下两项：
 
 **5a. 更新 project-status.md（如有变更）：**
 检查本会话是否产生项目状态变化（批次完成、阶段推进、遗留问题变更等）。
@@ -188,13 +210,13 @@ git push origin main
                                     ↑__________________________|
                                           （有问题继续循环）
 
-Codex-only 批次（全部 executor:codex）：
+Evaluator-only 批次（全部 executor:evaluator）：
   new → planning → verifying → fixing ⟷ reverifying → done
                       ↑___________________________|
 ```
 
 - `planning → building`：仅当存在 `executor:generator` 的功能时
-- `planning → verifying`：当全部功能均为 `executor:codex` 时（跳过 building）
+- `planning → verifying`：当全部功能均为 `executor:evaluator` 时（跳过 building）
 - `verifying`：首轮，有问题 → `fixing`，全 PASS → `done`
 - `fixing`：修复完成 → `reverifying`，fix_rounds +1
 - `reverifying`：有问题 → `fixing`，全 PASS → `done`
@@ -217,8 +239,8 @@ docs/
 
 | 层 | 位置 | 共享范围 | 存储内容 |
 |---|---|---|---|
-| **共享层** | `.auto-memory/`（git-tracked） | 所有 agent | 项目状态、环境信息、角色行为规范、参考资源 |
-| **本机层** | `~/.claude/projects/.../memory/`（本地） | 仅本机 agent | 用户偏好、沟通风格 |
+| **共享层** | `.auto-memory/`（git-tracked） | 所有实例 | 项目状态、环境信息、角色行为规范、参考资源 |
+| **本机层** | `~/.claude/projects/.../memory/`（本地） | 仅本机 | 用户偏好、沟通风格 |
 
 ### 共享层加载规则（确定性，不再"按需"）
 
@@ -226,7 +248,7 @@ docs/
 |---|---|---|---|
 | **T0** | 每次启动必读 | `MEMORY.md`（索引）+ `project-status.md` + `environment.md` | 各 ≤30 行 |
 | **T1** | 按当前角色加载 | `role-context/{当前角色}.md` | ≤50 行 |
-| **T2** | MEMORY.md 索引标注触发条件命中时 | `feedback-*.md` / `reference-*.md` / `user-role.md` | 按需 |
+| **T2** | MEMORY.md 索引标注触发条件命中时 | `feedback-*.md` / `reference-*.md` / `user-role.md` / `framework/patterns/*.md` | 按需 |
 
 ### 写入职责
 
@@ -247,9 +269,9 @@ docs/
 
 ## 需求池（backlog.json）
 
-**backlog.json** 是独立于当前批次的需求暂存区。Claude CLI 在与用户确认需求后，若当前有批次正在执行，将需求写入 backlog.json 而非打断当前批次。
+**backlog.json** 是独立于当前批次的需求暂存区。主实例在与用户确认需求后，若当前有批次正在执行，将需求写入 backlog.json 而非打断当前批次。
 
-**写入规则（Claude CLI）：**
+**写入规则：**
 - 任意阶段均可向 backlog.json 追加条目
 - 条目格式：`{ id, title, description, decisions[], confirmed_at, priority }`
 - 写入后告知用户"已加入需求池，等待下一批次安排"
@@ -266,8 +288,8 @@ docs/
 
 | 操作 | 执行者 | 说明 |
 |---|---|---|
-| `git push origin main` | Claude CLI | 触发 CI（lint + tsc），不自动部署 |
-| 手动触发 Deploy workflow | 用户 | Codex 验收通过后，在 GitHub Actions 手动点击触发部署 |
+| `git push origin main` | 主实例 | 触发 CI（lint + tsc），不自动部署 |
+| 手动触发 Deploy workflow | 用户 | Evaluator 验收通过后，在 GitHub Actions 手动点击触发部署 |
 
 ```bash
 # Generator 的标准提交流程
@@ -275,6 +297,8 @@ git add <files>
 git commit -m "..."
 git push origin main         # 触发 CI，不触发部署
 ```
+
+**并行实现的分支说明：** 快车道并行 subagent 使用 worktree 隔离实现，汇合到 main 后统一 push；不引入长寿命 feature 分支。详见 `orchestration-patterns.md` §3。
 
 **推送前遗漏检查（所有角色必须执行）：**
 
@@ -284,7 +308,7 @@ git push origin main         # 触发 CI，不触发部署
 git status --short docs/test-reports/ docs/test-cases/ .auto-memory/
 ```
 
-如果有未追踪文件（`??` 开头），必须一并加入当前 commit 或追加一个 commit 再推送。**不得留下未推送的测试产物，否则其他 agent 在远端看不到这些证据。**
+如果有未追踪文件（`??` 开头），必须一并加入当前 commit 或追加一个 commit 再推送。**不得留下未推送的测试产物，否则其他实例在远端看不到这些证据。**
 
 进度类文件（progress.json / features.json / .auto-memory/ 等）推 `main` 不触发 CI（paths-ignore 已配置）。
 
@@ -298,38 +322,54 @@ git status --short docs/test-reports/ docs/test-cases/ .auto-memory/
   "role_assignments": {
     "planner": "local",
     "generator": "remote-builder-1",
-    "evaluator": "codex-1"
+    "evaluator": "reviewer-1"
   }
 }
 ```
 
 **约束规则：**
-- generator 和 evaluator 不得为同一 agent-id（不能自己评估自己的代码）
+- generator 和 evaluator 不得为同一执行上下文（不能自己评估自己的代码）。同一实例 id 下，generator 在主上下文、evaluator 在隔离 subagent 中运行视为满足此约束
 - planner 可与任何角色重叠
-- 当前阶段（方向 B）：Codex 只能被分配为 evaluator（AGENTS.md 限制）
+- 外部工具类实例（非 Claude Code 的 agent，如 Codex）只能被分配为 evaluator
 - `role_assignments` 为 null 或不存在时，按默认映射执行，完全向后兼容
 - done 阶段清除 `role_assignments`
 
 **适用边界：**
-- 跨机器多 agent：各机器配不同 `.agent-id`，通过 `role_assignments` 分工 → 支持
+- 跨机器多实例：各机器配不同 `.agent-id`，通过 `role_assignments` 分工 → 慢车道
 - 同机器多实例：共享同一 `.agent-id`，harness 无法区分 → 由用户在对话中口头指定
 
 ## 铁律（任何情况下不得违反）
-1. 永远不要一次性生成所有代码，必须分功能逐条实现
+
+1. 永远不要一次性生成所有代码，必须分功能实现（允许独立 feature 并行，但每个 feature 独立 commit、可独立审查回滚）
 2. 每完成一个功能，立即写入 progress.json，不得跳过
-3. 上下文窗口剩余不足 20% 时，立即保存进度，结束当前会话
-4. 不得自己评估自己的代码质量，评估由 Codex（evaluator.md）完成
+3. 阶段边界必须把状态持久化到 progress.json / features.json 并 commit——使任意时刻会话中断都可从状态文件恢复。长会话信任上下文自动压缩机制续跑，不需要人为中断会话；但压缩不能替代状态落盘
+4. 不得自己评估自己的代码质量。评估必须在隔离上下文中进行（evaluator subagent 或独立实例），且结论原样落盘（见「独立性铁则」）
 5. 每次提交代码前必须确认可以运行，不提交无法运行的代码
-6. Generator 不得执行 `executor:codex` 的功能；Codex 不得实现 `executor:generator` 的功能
-7. 压测执行、code review、安全审计等"产出报告"类任务，必须标注 `executor:codex`
-8. `role_assignments` 存在时，agent 只执行分配给自己的角色，不越界
+6. Generator 不得执行 `executor:evaluator` 的功能；Evaluator 不得实现 `executor:generator` 的功能
+7. 压测执行、code review、安全审计等"产出报告"类任务，必须标注 `executor:evaluator`
+8. `role_assignments` 存在时，实例只执行分配给自己的角色，不越界
 9. 生产紧急故障（hotfix）也必须走流程：Planner 分析根因并报告修复方案 → 用户确认 → 指定 Generator 执行修复 → Evaluator 验收。Planner 不得直接修改产品代码，即使是一行代码
-10. 任何 spec-driven 工作必须有 `features.json` feature 号归属。无归属的代码修改 = 越界（commit message 的 `feat(<batch>-F<num>):` 标签必须能对应 features.json 实际条目，否则 Reviewer 拒绝签收）。详见 `pre-impl-adjudication.md` §4.6 §4.7 anti-patterns
-11. 状态机 JSON 文件（`progress.json` / `features.json` / `backlog.json`）写入后，commit 前必须跑 `python3 -c "import json; json.load(open('<file>'))"` 校验。建议 `.git/hooks/pre-commit` 加自动校验，挂钩失败拒提交。来源：MVP commit b44b79d（progress.json session_notes 块缺一个 `}` 进入 main 持续 N 小时未发现，下游工具 parse 即挂）
+10. 任何 spec-driven 工作必须有 `features.json` feature 号归属。无归属的代码修改 = 越界（commit message 的 `feat(<batch>-F<num>):` 标签必须能对应 features.json 实际条目，否则 Evaluator 拒绝签收）。详见 `pre-impl-adjudication.md` §4.6 §4.7 anti-patterns
+11. 状态机 JSON 文件（`progress.json` / `features.json` / `backlog.json`）写入后必须校验合法性。**首选机制化**：项目 `.claude/settings.json` 配 PostToolUse hook 在写入当下自动校验（模板见 `framework/templates/claude/`）；`.git/hooks/pre-commit` 加校验作兜底（模板见 `framework/templates/pre-commit-hook.sh`）。两层都没装时，手动跑 `python3 -c "import json; json.load(open('<file>'))"`。来源：MVP commit b44b79d（progress.json 缺一个 `}` 进入 main 持续 N 小时未发现）
+12. 主上下文编排 Evaluator subagent 时，不得在 subagent prompt 中夹带对实现质量的定性描述（"这些代码已充分测试"类），不得基于 subagent 结论之外的理由改写 PASS/FAIL 判定
+
+## 机制化守门（v1.0 新增）
+
+「写在文件里的规则」依赖模型自觉，「装进工具链的规则」才是强制。项目初始化时应装配（模板全部在 `framework/templates/claude/`）：
+
+| 守门 | 机制 | 拦截内容 |
+|---|---|---|
+| 状态 JSON 校验 | `.claude/settings.json` PostToolUse hook | progress.json / features.json / backlog.json 写坏 JSON 当场报错（铁律 11） |
+| 启动状态注入 | `.claude/settings.json` SessionStart hook | 会话启动自动注入当前 status / 批次进度，防漏读 progress.json |
+| Evaluator 边界 | `.claude/agents/evaluator.md` subagent 定义 | 验收角色以受限工具集 + 独立 system prompt 运行 |
+| 角色入口 | `.claude/skills/`（`/plan` `/build` `/verify`） | 阶段切换有明确入口，防止无角色状态下随手改代码 |
+| commit 兜底 | `.git/hooks/pre-commit` | JSON 校验 + 字体子集等项目级检查（离线兜底） |
+
+这是 `cowork-constraint-design.md`（2026-04-04 历史文档）想解决而当时无法解决的问题：当年结论是"约束本质上是知情自律"，现在 hooks + subagent 定义提供了真正的技术强制层。
 
 ## 框架提案规则
 
-Claude CLI 在执行任务过程中，若发现框架值得更新，采用以下两种模式：
+执行任务过程中，若发现框架值得更新，采用以下两种模式：
 
 - **即时提出**：影响当前决策的、需要用户立即判断的，直接在对话中提出，用户确认后立即更新 `framework/` 文件
 - **后台队列**：不紧急的、不影响主线任务的，追加到 `framework/proposed-learnings.md`，在 `done` 阶段一并提出
@@ -339,13 +379,13 @@ Claude CLI 在执行任务过程中，若发现框架值得更新，采用以下
 格式（追加到 `framework/proposed-learnings.md`）：
 
 ```markdown
-## [YYYY-MM-DD] Claude CLI — 来源：[触发场景简述]
+## [YYYY-MM-DD] {角色/实例} — 来源：[触发场景简述]
 
 **类型：** 新规律 / 新坑 / 模板修订 / 铁律补充
 
 **内容：** [一句话描述，足够让用户判断是否值得沉淀]
 
-**建议写入：** `framework/README.md` §经验教训 / `framework/harness/xxx.md` / 其他
+**建议写入：** `framework/README.md` §经验教训 / `framework/harness/xxx.md` / `framework/patterns/xxx.md` / 其他
 
 **状态：** 待确认
 ```

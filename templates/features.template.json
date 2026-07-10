@@ -11,9 +11,9 @@
     },
     {
       "id": "F002",
-      "title": "执行/评估类功能（由 Codex 操作工具产出报告）",
+      "title": "执行/评估类功能（由 Evaluator 操作工具产出报告）",
       "priority": "high",
-      "executor": "codex",
+      "executor": "evaluator",
       "status": "pending",
       "acceptance": "报告文件已生成，包含所有场景数据和结论"
     }

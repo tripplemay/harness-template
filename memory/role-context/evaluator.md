@@ -15,7 +15,7 @@ type: feedback
 ## 测试域所有权
 
 - 测试代码（单元、E2E、压测）由 Evaluator 编写，Generator 不介入
-- `executor:codex` 的功能由 Evaluator 主动执行，产出报告写入 `docs/test-reports/`
+- `executor:evaluator` 的功能由 Evaluator 主动执行，产出报告写入 `docs/test-reports/`
 
 ## UI 验收要点
 

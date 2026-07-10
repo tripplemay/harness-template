@@ -15,7 +15,7 @@
 
 ### F-XXX-01：[功能标题]
 
-**Executor：** generator / codex
+**Executor：** generator / evaluator
 
 **文件：**
 - `path/to/file.ts`（新增 / 修改）
@@ -62,7 +62,7 @@
 
 | 项 | 证据 |
 |---|---|
-| Staging git_sha == main HEAD | `curl https://staging.kol.guangai.ai/api/health \| jq .git_sha` 输出 = `<sha>` |
+| Staging git_sha == main HEAD | `curl https://staging.[domain]/api/health \| jq .git_sha` 输出 = `<sha>` |
 | 端到端流验证 | [描述 Reviewer 走完的真实 UX 流：登录 → 操作 → 观察 / 收件箱 / DB 查询结果] |
 | 关键 invariant | [如 send test 真发出 + Resend providerMessageId / FK 不撞 / count 验证等] |
 | 浏览器手动验（如 UI 类）| [DevTools 截图 / 字段渲染 / 网络面板] |

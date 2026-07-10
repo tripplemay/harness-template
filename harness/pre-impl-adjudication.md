@@ -224,7 +224,7 @@ B0 sprint 实测：
 
 | 机制 | 关系 |
 |---|---|
-| `铁律 6` Generator 不得执行 `executor:codex` | pre-impl 审计仍由 Generator 主动发起，不违反 |
+| `铁律 6` Generator 不得执行 `executor:evaluator` | pre-impl 审计仍由 Generator 主动发起，不违反 |
 | `铁律 9` 生产紧急故障也走流程 | hotfix 批次同样适用 pre-impl 审计（时间压力下可缩略） |
 | Planner `铁律 1` spec 必须核查源码 | 裁决前 Planner 必须 Read 实现文件确认现状 |
 | Role assignments | 多 Planner 项目：审计请求发给 `role_assignments.planner` |

@@ -56,10 +56,10 @@
 将需求展开为 5-30 条具体功能，写入 features.json。
 
 **每条功能必须声明 `executor` 字段：**
-- `"generator"`（默认）：代码实现类，由 Claude CLI 在 building 阶段完成
-- `"codex"`：执行/评估类，由 Codex 在 verifying 阶段完成
+- `"generator"`（默认）：代码实现类，由 Generator 在 building 阶段完成
+- `"evaluator"`：执行/评估类，由 Evaluator 在 verifying 阶段完成（历史项目的 `"codex"` 为等价别名）
 
-executor:codex 的典型场景：压力测试执行、code review、安全审计、E2E 测试运行、性能分析报告。
+executor:evaluator 的典型场景：压力测试执行、code review、安全审计、E2E 测试运行、性能分析报告。
 
 ```json
 {
@@ -76,7 +76,7 @@ executor:codex 的典型场景：压力测试执行、code review、安全审计
       "id": "F002",
       "title": "执行压测并输出报告",
       "priority": "high",
-      "executor": "codex",
+      "executor": "evaluator",
       "status": "pending",
       "acceptance": "报告文件已生成，包含所有场景数据和结论"
     }
@@ -94,22 +94,22 @@ executor:codex 的典型场景：压力测试执行、code review、安全审计
 如果项目根目录存在 `.agents-registry` 文件，读取可用 agent 列表，在写入 progress.json 前向用户展示并询问：
 
 ```
-可用 agent：
-  CLI: Kimi, Johnsong
-  Codex: Reviewer
+可用实例：
+  main: Kimi, Johnsong
+  evaluator: Reviewer
 
 本批次角色分配：
-  Generator → ?（默认：当前 agent）
-  Evaluator → ?（默认：Reviewer）
+  Generator → ?（默认：当前实例主上下文）
+  Evaluator → ?（默认：当前实例的隔离 evaluator subagent）
 ```
 
 1. 用户指定后写入 `role_assignments`
-2. 用户说"默认"或不指定 → 不写入 `role_assignments`，按默认映射
+2. 用户说"默认"或不指定 → 不写入 `role_assignments`，按默认映射（快车道：evaluator = 隔离 subagent）
 
 **校验规则（写入前必须检查）：**
-- generator 和 evaluator 不能是同一个 agent-id
-- 当前阶段（方向 B）：Codex 类 agent 只能被分配为 evaluator
-- 指定的 agent 名必须在 `.agents-registry` 中存在
+- generator 和 evaluator 不能是同一执行上下文（同一实例 id 下 generator 主上下文 + evaluator 隔离 subagent 视为满足）
+- 外部工具类实例（非 Claude Code，如 Codex）只能被分配为 evaluator
+- 指定的实例名必须在 `.agents-registry` 中存在
 
 `.agents-registry` 文件不存在 → 跳过此步骤，按默认映射。
 
@@ -138,13 +138,22 @@ executor:codex 的典型场景：压力测试执行、code review、安全审计
 }
 ```
 
-**全部为 `executor:codex`（Codex-only 批次，跳过 building）：**
+**全部为 `executor:evaluator`（Evaluator-only 批次，跳过 building）：**
 ```json
 {
   "status": "verifying",
   ...（其他字段相同）
 }
 ```
+
+### 6.5 确认执行车道与编排方式（v1.0 新增）
+
+status 写入前与用户确认两件事（默认值可直接沿用，不必逐条追问）：
+
+1. **车道选择**：默认快车道（同会话）；命中 harness-rules.md §车道选择规则任一条件（跨机器 role_assignments / 跨多日批次 / 用户要求独立实例验收）→ 慢车道
+2. **编排方式**：building 是否并行（独立 feature ≥2 条且文件集不重叠，见 `orchestration-patterns.md` §3）、verifying 是否 fan-out（features ≥4 条，见 §4）。判定结果一句话写入 spec §关键设计决策，让 Generator / Evaluator 开工时无歧义
+
+**plan mode 提示：** planning 阶段的 spec + features.json + 车道选择适合作为 plan 提交用户确认——用户批准即 spec lock。plan 确认不替代 spec 文档落盘。
 
 ## 完成标准
 - `docs/specs/` 下规格文档已创建（新功能批次硬性要求，Bug 修复可省略）
@@ -440,7 +449,7 @@ grep -rn "<Y列名>:" src/          # 反查 Y 的所有赋值处，确认真实
 
 ## status = "done" 时的收尾流程
 
-当 Codex 将 progress.json 置为 `done` 后，Claude CLI 接手执行以下步骤（**必须按顺序**）：
+当 Evaluator 将 progress.json 置为 `done` 后，Planner（主上下文）接手执行以下步骤（**必须按顺序**）：
 
 ### 1. 校验并整合 project-status.md
 读取 `.auto-memory/project-status.md`，检查 Generator 和 Evaluator 在过程中写入的内容是否准确完整：
@@ -550,7 +559,7 @@ KOLMatrix MVP-internal-demo-prep fixing-1（C-03 /database 三卡）案例：
 
 ## UI 类 spec 起草前 mandatory self-check checklist
 
-**背景：** `framework/harness/ui-fidelity-guardrail.md` §2 已规定所有 UI 类 feature spec 必须含 4 段（§2.1 原型路径 + §2.2 必用公共组件清单 + §2.3 不得简化清单 + §2.4 visual baseline 硬要求）。但 BL-025 Planner 起草 spec 时**漏写 3/4**（仅 §2.1），靠用户主动 challenge "新页面会严格按框架还原 + 抽公共组件 + 不手写吗?" 才补全。规范存在但自审缺失 = 实际等于无规范。
+**背景：** `framework/patterns/ui-fidelity-guardrail.md` §2 已规定所有 UI 类 feature spec 必须含 4 段（§2.1 原型路径 + §2.2 必用公共组件清单 + §2.3 不得简化清单 + §2.4 visual baseline 硬要求）。但 BL-025 Planner 起草 spec 时**漏写 3/4**（仅 §2.1），靠用户主动 challenge "新页面会严格按框架还原 + 抽公共组件 + 不手写吗?" 才补全。规范存在但自审缺失 = 实际等于无规范。
 
 **Planner 起草 UI 类 spec 自审 checklist（spec lock 前必跑）：**
 
@@ -580,7 +589,7 @@ done
 
 **适用场景：** 批次涉及**新增 messages/{locale}.json 命名空间**或**已有命名空间扩展 ≥ 5 个 keys**。
 
-**spec 必含 §"D-i18n: i18n 命名空间扩展计划" 段** — 详见 `framework/harness/i18n-namespace-add-checklist.md`。核心两条：
+**spec 必含 §"D-i18n: i18n 命名空间扩展计划" 段** — 详见 `framework/patterns/i18n-namespace-add-checklist.md`。核心两条：
 
 1. **i18n CI locale-coverage 守门 — 行业词 allowlist：** 命名空间含英文行业惯用词（KOL / AI / CPI / ROI 等）的 path 必须列入 spec，Generator 同 commit 修订 CI 守门 `KEEP_AS_EN_PATHS`
 2. **i18n CI placeholders 守门 — ICU plural shape parity：** 含 `{count, plural, ...}` 的 keys 在 spec §schema 段标注 "ICU plural shape required in all 5 languages"，CJK 语言用 `{count, plural, one {...} other {...}}` 包裹（同文本但形状必填）

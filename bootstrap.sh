@@ -36,11 +36,17 @@ fi
 echo "→ Bootstrapping Triad Workflow（布局：${LAYOUT}）"
 
 # 1. Harness 角色文件到根目录
-cp "$SRC_PREFIX/harness/harness-rules.md"     "$TARGET_DIR/harness-rules.md"
-cp "$SRC_PREFIX/harness/planner.md"           "$TARGET_DIR/planner.md"
-cp "$SRC_PREFIX/harness/generator.md"         "$TARGET_DIR/generator.md"
-cp "$SRC_PREFIX/harness/evaluator.md"         "$TARGET_DIR/evaluator.md"
-cp "$SRC_PREFIX/harness/progress.init.json"   "$TARGET_DIR/progress.json"
+cp "$SRC_PREFIX/harness/harness-rules.md"           "$TARGET_DIR/harness-rules.md"
+cp "$SRC_PREFIX/harness/planner.md"                 "$TARGET_DIR/planner.md"
+cp "$SRC_PREFIX/harness/generator.md"               "$TARGET_DIR/generator.md"
+cp "$SRC_PREFIX/harness/evaluator.md"               "$TARGET_DIR/evaluator.md"
+cp "$SRC_PREFIX/harness/orchestration-patterns.md"  "$TARGET_DIR/orchestration-patterns.md"
+cp "$SRC_PREFIX/harness/progress.init.json"         "$TARGET_DIR/progress.json"
+
+# 1.5. Claude Code 机制化守门（.claude/：hooks + evaluator subagent + 角色技能）
+mkdir -p "$TARGET_DIR/.claude"
+cp -r "$SRC_PREFIX/templates/claude/." "$TARGET_DIR/.claude/"
+chmod +x "$TARGET_DIR/.claude/hooks/"*.sh
 
 # 2. 状态机初始数据
 cat > "$TARGET_DIR/features.json" <<'JSON'
@@ -96,7 +102,13 @@ if [ "$LAYOUT" = "flat" ]; then
   mv "$TARGET_DIR/harness"       "$TARGET_DIR/framework/"
   mv "$TARGET_DIR/memory"        "$TARGET_DIR/framework/"
   mv "$TARGET_DIR/templates"     "$TARGET_DIR/framework/"
+  [ -d "$TARGET_DIR/patterns" ] && mv "$TARGET_DIR/patterns" "$TARGET_DIR/framework/"
   [ -d "$TARGET_DIR/archive" ] && mv "$TARGET_DIR/archive" "$TARGET_DIR/framework/"
+  # framework 自身文档（docs/0*.md）随源归整，避免与项目 docs/ 混淆
+  if ls "$TARGET_DIR"/docs/0*.md >/dev/null 2>&1; then
+    mkdir -p "$TARGET_DIR/framework/docs"
+    mv "$TARGET_DIR"/docs/0*.md "$TARGET_DIR/framework/docs/"
+  fi
   [ -f "$TARGET_DIR/cowork-constraint-design.md" ] && mv "$TARGET_DIR/cowork-constraint-design.md" "$TARGET_DIR/framework/"
   [ -f "$TARGET_DIR/proposed-learnings.md" ] && mv "$TARGET_DIR/proposed-learnings.md" "$TARGET_DIR/framework/"
   [ -f "$TARGET_DIR/CHANGELOG.md" ] && mv "$TARGET_DIR/CHANGELOG.md" "$TARGET_DIR/framework/CHANGELOG.md"
@@ -121,10 +133,12 @@ cat <<EOF
 项目结构：
   ├── CLAUDE.md / AGENTS.md              （占位符版本，待 Claude 填充）
   ├── harness-rules.md / planner.md / generator.md / evaluator.md
+  ├── orchestration-patterns.md          （同会话编排 / 并行 / fan-out 验收）
+  ├── .claude/                           （hooks 守门 + evaluator subagent + /plan /build /verify 技能）
   ├── progress.json / features.json / backlog.json
   ├── .auto-memory/                      （T0/T1/T2 分层记忆）
   ├── docs/specs/ / test-cases/ / test-reports/
-  └── framework/                         （源模板，供沉淀回流）
+  └── framework/                         （源模板 + patterns/ 技术域经验库，供沉淀回流）
 
 下一步：
   1. 在本目录打开 Claude CLI

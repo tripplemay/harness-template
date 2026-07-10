@@ -5,6 +5,33 @@
 
 ---
 
+## v1.0.0 — 2026-07-09（Claude Code 时代重构：上下文隔离 + 两条车道 + 机制化守门 + 目录分层）
+
+**来源：** 用户发起的框架全面升级审计（2026-07-09），四项决议：混合模式 Evaluator / v1.0 重构 / 编排三模式（Workflow 编排 + 灵活日常流 + /loop 自排程）/ BL-064 提案闭环。
+
+**触发原因（v0.x 已过时的点）：**
+- 双工具架构假设（Codex 专职 Evaluator + 3099 端口 / PTY 启动 / 方向 B 限制）——Claude Code 已原生支持 fresh-context subagent 与多 agent 编排，「无自评」的实现基础从「第二个产品」变为「上下文隔离」
+- 铁律 3「上下文不足 20% 保存进度重启会话」——上下文自动压缩续接已成标配，人为中断不再必要
+- 角色加载 = 模型自觉读 md 文件、JSON 校验寄望手动 pre-commit——hooks / skills / subagent 定义可将约束机制化（cowork-constraint-design.md 当年无解的「知情自律」问题现有技术强制层）
+- 串行执行假设——独立 feature 并行实现（worktree）与 fan-out 验收 + 对抗复核已可行
+- README 引用的 docs/01-03 与 INIT.md 长期缺失；evaluator.md / generator.md 章节编号重复
+
+**变更（架构）：**
+- `harness/harness-rules.md` 重写：新增「角色与执行形态」（快车道 = 同会话，Evaluator 以隔离 subagent 运行；慢车道 = git 总线，跨机器/跨工具照旧）+「独立性铁则」（fresh context / 评估基于实物 / 结论原样落盘 / 不改产品代码）+「机制化守门」章节；铁律 3 改为「阶段边界状态落盘 + 信任压缩续跑」；铁律 11 改为 hook 机制化优先；新增铁律 12（编排者不得污染 evaluator 输入、不得改写其结论）；`executor:"codex"` 更名 `"evaluator"`（旧值作别名兼容）；`.agent-id` 格式 `main:`/`evaluator:`（`cli:`/`codex:` 兼容）
+- `harness/orchestration-patterns.md` 新增：角色↔机制映射（plan mode / subagent / worktree）、快车道标准流、并行 building 判定与汇合、fan-out 验收 + 对抗复核三阶段、Workflow 脚本场景（审计 loop-until-dry / 迁移 pipeline）、后台 CI 与 /loop 自排程纪律（无人值守不得自动切阶段）、模型分层建议、慢车道保留场景
+- **目录分层**：新建 `patterns/`（技术域经验库，触发条件命中才读，含索引 README）——deploy / database / ai-action-contract / ui-fidelity / i18n / material-symbols 自 harness/ 迁入；generator.md §8-§9 抽出为 `patterns/web-runtime-patterns.md`；evaluator.md §13-§16/§18-§19 抽出为 `patterns/testing-env-patterns.md`。harness/ 只保留状态机 + 角色协议 + 编排 + 裁决模式
+- `templates/claude/` 新增（bootstrap 装配到项目 `.claude/`）：SessionStart 状态注入 hook + PostToolUse 状态 JSON 校验 hook（铁律 11 机制化）+ `agents/evaluator.md` 隔离验收 subagent 定义 + `/plan` `/build` `/verify` 角色技能入口
+- `templates/AGENTS.md` 重写为工具无关的「独立 evaluator 实例」指令（agents.md 业界惯例），Codex 沙箱细节移除；`templates/CLAUDE.md` 更新启动流程与技能入口
+- 角色文件修订：planner.md 去工具耦合 + 新增 §6.5 车道与编排确认 + plan mode 提示（铁律 1-9 与裁决规则全保留）；generator.md 新增并行执行说明 + CI 后台 watch + 状态持久化检查点（替代 20% 规则）+ 修复重复编号；evaluator.md 新增执行形态章节 + 修复重复编号（§3/§4 各出现两次 → 顺序编号）+ 清除 aigcgateway 项目残留引用
+- **补齐缺失文件**：INIT.md（初始化引导，README/bootstrap 引用两个月的悬空引用）+ docs/01-concepts.md / 02-usage.md / 03-quickstart.md；README 重写反映 v1.0；bootstrap.sh 装配 .claude/ + 归整 patterns/ 与 framework docs；repo 根 .gitignore 新增（.obsidian/ / .DS_Store）
+
+**变更（沉淀闭环）：**
+- BL-064 提案（2026-05-11 挂起）闭环：IA refactor redirect scope 按 destination wire-readiness 评估 → 写入 `memory/role-context/generator.md` + `memory/role-context/planner.md`，归档 `archive/proposed-learnings-archive-v1.0.md`
+
+**兼容性：** 状态机 7 状态、progress.json/features.json 字段、L1/L2 分层、记忆 T0/T1/T2、签收/backlog/role_assignments 约定均不变。存量 v0.x 项目无需迁移即可继续运行（codex/cli 别名兼容）；建议增量采纳：拷贝 `.claude/` 模板 + 替换 harness 角色文件。
+
+---
+
 ## v0.9.23 — 2026-07-03（aigcgateway BL-SYNC-ADAPTERTYPE-FALLBACK 沉淀，2 条 learnings）
 
 **来源批次：**

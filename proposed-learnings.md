@@ -31,37 +31,8 @@
 
 <!-- 2026-05-10: v0.9.20 沉淀完成（1 条 learning 来源 BL-060 fix-round 1→2 e2e suite-level isolation vs 单 case 信号区分），写入 .auto-memory/role-context/evaluator.md §"E2E suite 稳定性诊断" + .auto-memory/role-context/generator.md §"扩范围 vs 单点修的判断"。后续 batch 候选（抽 tests/e2e/helpers/auth.ts + global-setup.ts + storageState 复用）入 backlog 跟踪。归档暂未写 framework/archive/proposed-learnings-archive-v0.9.20.md（git history 已有 commits cae1f8f / 821c094 完整记录）。-->
 
+<!-- 2026-07-09: v1.0.0 沉淀完成（1 条 learning 来源 BL-064 IA refactor redirect scope），写入 memory/role-context/generator.md §"IA refactor redirect scope 评估" + memory/role-context/planner.md §"IA refactor 类批次 redirect 清单评估" + CHANGELOG。归档：framework/archive/proposed-learnings-archive-v1.0.md。 -->
+
 ---
 
-## [2026-05-11] Claude CLI — 来源：BL-064 fix-round 3 实战（顶层 IA refactor 7→4 路由）
-
-**类型：** 新规律 / 模板修订（适用未来所有 IA refactor / page consolidation 批次）
-
-**事实链：**
-
-1. BL-064 spec §4 原预期 redirect ~12 条（7 老路由 + 子路径继承 + parametric）
-2. fix-round 1-3 实战发现：embed-old-components 策略下，redirect 到 destination route **未 wire ready** 时（如 /campaigns/new → /brief?action=new 但 /brief 本批次只 embed /knowledge-base，没 wire form action），用户体验比 kept 旧路由 **差** — 跳转后看到的是 placeholder URL 但内容仍是旧的，反而 confusing
-3. 最终缩减到 6 条 redirect = 5 content-equivalent prefix（/dashboard→insight / /discovery→match / /database→match / /knowledge-base→brief / /outreach→reach）+ 1 parametric（/campaigns/[id]→/match?campaignId=:id）
-4. 4 条原预期 redirect 改 kept deep-link，推迟到后续 Phase 批次 wire destination 后再启：
-   - /campaigns 列表 → kept；BL-066 wire /match view=campaigns 后启
-   - /campaigns/new → kept；BL-069 wire /brief form 后启
-   - /roi / /weekly-report / /analytics → kept；BL-070 unify /insight 后启
-   - /outreach/templates 等 sub-path → kept；BL-070 wire /reach 子路由后启
-
-**升级后的教训（适用未来批次）：**
-
-A. **IA refactor batch 的 redirect scope 应根据 destination route wire-readiness 评估** — 不是所有老路由都立即 redirect，destination route 必须含等效或更优的功能才启 redirect；否则 kept deep-link 让 UX 不退化
-
-B. **embed-old-components 占位策略下的 redirect 评估清单**（spec 起草时套用）：
-   - destination route 是否已 wire 该 content？（如有则 redirect OK）
-   - destination route 仅 embed-old 占位时，redirect 到那里只是 URL 换名 → UX 不变但用户认知混乱，**kept 更优**
-   - 决策点放 spec §4 关键决策点，让 Planner 起草时 explicit 标记每条 redirect 的 wire-readiness 状态
-
-C. **redirect scope 缩减是良性 fix-round** — fix-round 数不计入"质量问题"，反映 IA refactor 需要 building 中段实战验证才能确定最优 scope
-
-**建议写入：**
-- 主位置：`.auto-memory/role-context/generator.md` 新增 §"IA refactor redirect scope 评估"（~8 行）
-- 次位置：`.auto-memory/role-context/planner.md`（spec 起草时 §"IA refactor 类批次 redirect 清单"评估流程，~5 行）
-- （可选）`framework/templates/ia-refactor-spec-template.md` 新模板含 wire-readiness checklist（如未来 IA refactor 高频可加）
-
-**状态：** 待用户确认沉淀位置
+（当前无待确认提案）

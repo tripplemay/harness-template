@@ -22,10 +22,16 @@ type: feedback
 
 - 修复来自审计 / Evaluator 反馈的 critical/high 断言时，**必须在同一个 commit 中**补充 regression test
 - 测试用例必须能对比修复前（失败）和修复后（通过）
-- 测试代码由 Generator 提供脚本/调用，但执行权归 Codex（测试域所有者）
+- 测试代码由 Generator 提供脚本/调用，但执行权归 Evaluator（测试域所有者）
 - 这是 acceptance 的一部分，Evaluator 验收时会检查
 
 ## CI 守门（铁律）
 
-- 每次 `git push origin main` 后必须 `gh run list --limit 3 --branch main` 检查
+- 每次 `git push origin main` 后必须检查 CI（可后台 `gh run watch`，期间可继续工作）
 - CI 红色 → 立即停止新功能，先修复 CI；通过后才继续下一个功能
+
+## IA refactor redirect scope 评估（v1.0 — BL-064 沉淀）
+
+- 老路由 redirect 前先核 destination route 的 **wire-readiness**：目标路由已 wire 等效或更优功能才启 redirect
+- destination 仅 embed-old 占位时，redirect 只是 URL 换名 → 用户认知混乱，**kept 旧路由更优**，推迟到目标 wire 后的批次再启
+- 实装中发现 redirect 该缩减 → 主动停下走 partial-pending 裁决（pre-impl-adjudication.md §11）；此类 scope 缩减是良性 fix-round，不计质量问题
