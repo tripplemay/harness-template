@@ -462,6 +462,48 @@ aigcgateway BL-SYNC-ADAPTERTYPE-FALLBACK fix-round-1 实例：修复让 guangtec
 
 ---
 
+## 7. 不可逆生产迁移（换机 / 换部署模型）— v1.0.1（aigcgateway BL-PROD-MIGRATE-DEPLOYSVR 沉淀）
+
+换生产服务器、或换部署模型（原生 PM2 → 容器化）属不可逆操作，必须按固定剧本，否则一次翻车全站瘫痪或数据丢失。
+
+### 7.1 迁移剧本：演练 → 预置 → 最短停机窗口 → 回滚就绪
+
+四段式，前两段完全可逆、旧机全程照常服务：
+
+1. **并行演练（旧机不动）**：新机起完整新栈 + 灌一份**生产数据快照** + 全链路冒烟（真实凭据解密、跨云资源读写、流式、鉴权、MCP 等）。演练在新机 loopback 跑，不切流量。价值：本次演练即捕获 Next standalone HOSTNAME bug（§7.3），割接前挡掉。
+2. **可逆预置（旧机不动）**：割接要用的**一切可逆步骤全预置完** —— 签 TLS 证书（DNS-01 免停机）、装反向代理 vhost、验证公网入口可达（`curl --resolve <域名>:443:<新IP>` 绕 DNS 直验新机 200 + 证书）。目的：把不可逆窗口压到只剩数据同步 + DNS 切换。
+3. **最短停机窗口**：`停旧机写入 → 数据终态同步 → 切 DNS`。每个不可逆点（停写 / 数据终态 / DNS 切）执行前取用户 go/no-go。数据终态用 `drop schema public cascade + pg_restore --no-owner`（清演练残留）。
+4. **回滚就绪**：旧机停写**冻结**（DB 不再写）作回滚点；旧 DNS 值 / `VPS_HOST` 旧值 / last-known-good 镜像 tag 全留档。观察期内不退旧机；旧机若还承载其他服务，整机退役单列。
+
+**Planner spec checklist（迁移批次）：**
+- [ ] acceptance 含"演练冒烟"（新栈 loopback）+ "割接后公网端到端"两层
+- [ ] 三个不可逆门禁（停写 / 数据终态 / DNS 切）标注 go/no-go
+- [ ] 回滚手册显式（流量回滚命令 + 镜像/进程回滚命令 + 旧机冻结确认）
+- [ ] 旧机若跑多服务，退役范围 = 仅本服务冻结；整机下线依赖其他服务迁移，单列
+
+### 7.2 凭据一致性（有状态应用迁移红线）
+
+**"解密 DB 数据的密钥"必须与源机逐字节一致，且 sha256 跨机比对证明** —— 不能只"复制了就算"。一旦不一致，DB 内所有加密字段（如 provider 凭据）无法解密 = 全站瘫痪。
+
+```bash
+# 跨机比对（只传 hash，不落明文 / 不进日志）：源机 authoritative 配置 vs 新机 .env 逐项 ✓ 才继续
+h() { printf '%s' "$1" | sha256sum | cut -c1-16; }   # 对 ENCRYPTION_KEY / JWT / 签名 secret / DB 密码逐项
+```
+
+**配套坑 — env_file 引号**：源机 `.env` 若被 bash `source`（值带引号 `KEY="v"`），迁到 docker compose `env_file` 时**引号被当字面量保留**（值变成 `"v"` 而非 `v`）→ 密钥错位。构建新 `.env` 时必须去外层引号规范化。
+
+### 7.3 容器化 Next.js standalone 的 HOSTNAME 坑
+
+Next.js standalone `server.js` 默认绑 `process.env.HOSTNAME`，而 **Docker 运行时把 HOSTNAME 注入为容器 ID** → app 绑到容器 IP 而非 `0.0.0.0`：
+- 发布端口经 docker-proxy 仍可达（宿主 / 外部 curl 200）——**掩盖问题**
+- 但**容器内** `127.0.0.1:<port>` 不监听 → 容器 HEALTHCHECK（`fetch 127.0.0.1`）ECONNREFUSED、状态永远卡 `starting`
+
+**修复**：compose `environment: HOSTNAME=0.0.0.0`（发布端口仅绑 127.0.0.1 loopback 时无安全影响）。与 `web-runtime-patterns.md` §"Next standalone request.url origin 反代推导" 同族——一个是绑定地址、一个是对外 URL 构造。
+
+**来源：** aigcgateway BL-PROD-MIGRATE-DEPLOYSVR（GCP 原生 PM2 → deploysvr 容器化，2026-07-12）。演练捕获 HOSTNAME bug；sha256 校验 ENCRYPTION_KEY 逐字一致；Certbot DNS-01 预签零停机割接。
+
+---
+
 ## 来源
 
 - KOLMatrix BI2-F002 两轮重裁决 + Round 2 实测证伪（2026-04-20）
@@ -484,3 +526,4 @@ aigcgateway BL-SYNC-ADAPTERTYPE-FALLBACK fix-round-1 实例：修复让 guangtec
 | 2026-05-05 | §5 新 auth-gated endpoint 配套 deploy script（v0.9.12，含 graceful-degrade 模板 + bash 旧 bytecode 重启 deploy run）| KOLMatrix BL-034 F007 deploy-staging.sh 死循环 + bash bytecode 双坑 |
 | 2026-05-06 | §5.1 spec acceptance 改 deploy-script 时同 commit 必须改对应 yml workflow（v0.9.13，含 Planner spec lock checklist + Generator 实装 checklist + Reviewer L2 deploy log warning 抓取强制）| KOLMatrix BL-024-F006 retroactive hotfix（BL-034 F001 root cause 1+ 周后实地核查发现）|
 | 2026-07-03 | §6 数据命名/结构变更类修复：部署立即触发 on-boot 后台任务产生 orphan/中间态，须配套幂等数据修复脚本（自愈 orphan + 先部署后修数据 + dry-run 默认）| aigcgateway BL-SYNC-ADAPTERTYPE-FALLBACK fix-round-1（v0.9.23）|
+| 2026-07-12 | §7 不可逆生产迁移（换机/换部署模型）：演练→预置→最短停机窗口→回滚就绪四段剧本 + 凭据 sha256 逐字一致红线（含 env_file 引号坑）+ 容器化 Next.js standalone HOSTNAME=0.0.0.0 坑 | aigcgateway BL-PROD-MIGRATE-DEPLOYSVR（GCP 原生 PM2 → deploysvr 容器化，v1.0.1）|

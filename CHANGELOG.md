@@ -5,6 +5,19 @@
 
 ---
 
+## v1.0.1 — 2026-07-12（patterns/deploy §7 不可逆生产迁移剧本）
+
+**来源：** aigcgateway BL-PROD-MIGRATE-DEPLOYSVR（生产从 GCP 原生 PM2 `34.180.93.185` 迁到 deploysvr `194.238.26.173` 容器化，用户手工验收通过）。
+
+**变更：**
+- `patterns/deploy-patterns.md` 新增 §7「不可逆生产迁移（换机 / 换部署模型）」：
+  - §7.1 四段剧本：并行演练（灌生产快照冒烟，旧机不动）→ 可逆预置（DNS-01 签证/装 vhost/`curl --resolve` 绕 DNS 验公网可达）→ 最短停机窗口（停写→数据终态 drop schema+restore→切 DNS，逐门禁 go/no-go）→ 回滚就绪（旧机冻结 + 旧值留档 + 多服务机退役单列）+ Planner spec checklist
+  - §7.2 凭据一致性红线：解密 DB 的密钥（ENCRYPTION_KEY 等）必须与源机 sha256 逐字一致（跨机比对只传 hash）；配套 env_file 引号坑（bash source 的带引号值迁到 compose env_file 被当字面量）
+  - §7.3 容器化 Next.js standalone HOSTNAME 坑：默认绑 `$HOSTNAME`（Docker 注入容器 ID）→ 容器内 127.0.0.1 不监听、healthcheck ECONNREFUSED（但发布端口经 docker-proxy 仍可达，掩盖问题）→ compose `HOSTNAME=0.0.0.0`
+- `patterns/README.md` deploy-patterns 触发条件补「换机/换部署模型迁移、容器化(Docker compose)、Next.js standalone 部署」
+
+---
+
 ## v1.0.0 — 2026-07-09（Claude Code 时代重构：上下文隔离 + 两条车道 + 机制化守门 + 目录分层）
 
 **来源：** 用户发起的框架全面升级审计（2026-07-09），四项决议：混合模式 Evaluator / v1.0 重构 / 编排三模式（Workflow 编排 + 灵活日常流 + /loop 自排程）/ BL-064 提案闭环。

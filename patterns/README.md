@@ -6,7 +6,7 @@
 
 | 文件 | 触发条件（何时读） | 主要读者 |
 |---|---|---|
-| [deploy-patterns.md](deploy-patterns.md) | spec / 实装涉及 PM2、进程管理、nginx、staging/prod 部署链、`.env` 变更、on-boot 任务 | Planner / Generator |
+| [deploy-patterns.md](deploy-patterns.md) | spec / 实装涉及 PM2、进程管理、nginx、staging/prod 部署链、`.env` 变更、on-boot 任务、**换机/换部署模型的不可逆生产迁移、容器化(Docker compose)、Next.js standalone 部署** | Planner / Generator |
 | [database-patterns.md](database-patterns.md) | spec / 实装涉及 DB schema、migration、RLS、跨 tenant 查询、Prisma JSON 列 | Planner / Generator |
 | [ai-action-contract.md](ai-action-contract.md) | 集成 LLM 网关 / AI action（prompt template + variables → JSON 输出），涉及 timeout、max_tokens、prompt injection | Planner / Generator |
 | [ui-fidelity-guardrail.md](ui-fidelity-guardrail.md) | 任何有设计稿原型参照的 UI 页面 feature（spec 4 段硬要求 + 还原度验收） | 三角色 |
