@@ -117,7 +117,7 @@
 | 3 | 对抗复核**扩展到抽样 PASS 项**查证据；verdict 工件 schema 强制每 feature 非空 `steps_to_reproduce + evidence`，机械拒收无证据 PASS | 首轮全 PASS 零审查橡皮图章 + 沉淀灌空壳 | S3+S4 | 待建 |
 | 4 | **确定性 JS Gate Arbiter + Budget Governor**（纯函数，非模型判断） | 模型误判进安全关键路径 | S3 | 待建 |
 | 5 | `progress.json` 加 **autonomy_ledger**（累计 token/cost/fix_round/verdict_ref）+ 显式 `halt_conditions` + 重启时 worktree 与 features.json 对账 | 推理成本跑飞 / 工件缺失无限重跑 / 崩溃恢复 | S4 | 待建 |
-| 6 | evaluator **随机模型档位** + 每批抽一 feature 跑第二独立 evaluator；`proposed-learnings.md` 收割**永远人类确认** | 相关性偏差（自主比人更快传播陈旧误报目录） | S4 | 待建 |
+| 6 | evaluator **档位确定性轮换**（wake_n）+ 每批抽一 feature 跑第二独立 evaluator（不同档位/fresh context，分歧 → `debias_conflict` 硬停）；`proposed-learnings.md` 收割**永远人类确认** | 相关性偏差（自主比人更快传播陈旧误报目录） | S4 | 已接线 gate-arbiter |
 
 ---
 
@@ -180,11 +180,11 @@ verdict 工件 schema 校验、progress.json 的 `autonomy_ledger`/`halt_conditi
 > - `settings.autodrive.json` — 机件 #0/#1 工具 deny-list（deploy/migrate/prod/花钱 MCP + policy 只读）
 > - `autonomy-policy.schema.json` — 机件 #1 策略 schema（auto_cross 枚举只含 A/B，结构性禁 C）
 > - `validate-autonomy-policy.sh` — 机件 #1 fail-closed 内容校验 hook（含过期时间门）
-> - `gate-arbiter.workflow.js` — 机件 #4 Gate Arbiter（纯函数 governor/闸门 + **build/plan 已接线** + #2/#3/#5 嫁接）
+> - `gate-arbiter.workflow.js` — 机件 #4 Gate Arbiter（纯函数 governor/闸门 + **build/plan 已接线** + #2/#3/#5/#6 嫁接）
 > - `agent-spec-lock-critic.md` — 机件 #2 独立 spec-lock 稽核 subagent（只读只判，build/fix 后稽核越界 → 越界 HALT）
 > - `skill-autodrive.md` — Dispatcher / §4 控制流：单次唤醒指令周期（前置断言 → 取状态 → 锁 → 派发 → 机械回写 → 闸门 → 重排）
 > - `progress.autonomy-fields.md` — 机件 #5 progress.json `autonomy` 命名空间块（status/policy_version/wake_in_progress/last_halt/ledger + halt_conditions 枚举；spec_locked 派生不另存）
 > - `verdict-artifact.schema.json` + `validate-verdict-artifact.sh` — 机件 #3 验收工件 schema + fail-closed 内容校验（每 feature 证据非空，拒收空壳）
 >
-> **仍待建：** 机件 #6 去偏（随机档位 + 抽样第二 evaluator）、§9 并发锁获取 / 心跳存活告警的**运行时实现**（字段已定义，逻辑在 /autodrive 草案）、
+> **仍待建：** §9 并发锁获取 / 心跳存活告警的**运行时实现**（字段已定义，逻辑在 /autodrive 草案）、
 > `generator-restricted`/`spec-lock-critic` 等 agentType 转正安装后方可真正派发、以及端到端演练。

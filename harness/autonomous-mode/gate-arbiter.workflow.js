@@ -60,6 +60,25 @@ const CRITIC_SCHEMA = {
   },
 }
 
+const VERDICT_SCHEMA = {
+  type: 'object', additionalProperties: false, required: ['verdicts', 'all_pass'],
+  properties: {
+    all_pass: { type: 'boolean' },
+    verdicts: { type: 'array', items: { type: 'object', additionalProperties: false,
+      required: ['feature_id', 'result', 'evidence', 'steps_to_reproduce'],
+      properties: {
+        feature_id: { type: 'string' },
+        result: { type: 'string', enum: ['PASS', 'PARTIAL', 'FAIL'] },
+        evidence: { type: 'string', minLength: 1 },          // 机件 #3：证据非空
+        steps_to_reproduce: { type: 'string', minLength: 1 },
+      } } },
+  },
+}
+
+// 机件 #6 去偏：主 evaluator 档位按 wake_n 确定性轮换（Workflow 内无 Math.random）；
+// 第二 evaluator 取"下一档"，永远与主档位不同 → 打破相关模型盲点。档位表为可调旋钮。
+const EVAL_TIERS = [{ model: 'opus', effort: 'high' }, { model: 'sonnet', effort: 'high' }]
+
 // spec-lock 稽核（机件 #2）：在会写盘的 build/fix 步后、推进前跑；critic 自行 git diff，不需传入。
 async function specLockCritic(batchScope) {
   const c = await agent(
@@ -132,23 +151,36 @@ if (action === 'plan') {
 
 } else if (action === 'verify') {
   // 隔离 evaluator（≥4/多维 → fan-out）。对 FAIL/PARTIAL 证伪；对 PASS 抽样查证据（机件 #3）。
+  // 机件 #6：主档位按 wake_n 轮换。
+  const w = ledger.wake_n ?? 0
+  const primaryTier = EVAL_TIERS[w % EVAL_TIERS.length]
+  const secondTier = EVAL_TIERS[(w + 1) % EVAL_TIERS.length]
+
   stepResult = await agent(
     `以隔离 evaluator 验收 batch=${state.current_sprint}。prompt 只含 {spec/feature 路径, L2-flag}，`
     + `无任何实现叙述（铁律 12）。对 FAIL/PARTIAL 证伪已知环境误报；对 PASS 抽样核对 `
     + `steps_to_reproduce + evidence 非空，无证据的 PASS 一律降级 PARTIAL。`,
     { label: 'verify:evaluator', phase: 'Wake', agentType: 'general-purpose',
-      schema: { type: 'object', additionalProperties: false, required: ['verdicts', 'all_pass'],
-        properties: {
-          all_pass: { type: 'boolean' },
-          verdicts: { type: 'array', items: { type: 'object', additionalProperties: false,
-            required: ['feature_id', 'result', 'evidence', 'steps_to_reproduce'],
-            properties: {
-              feature_id: { type: 'string' },
-              result: { type: 'string', enum: ['PASS', 'PARTIAL', 'FAIL'] },
-              evidence: { type: 'string', minLength: 1 },          // 机件 #3：证据非空
-              steps_to_reproduce: { type: 'string', minLength: 1 },
-            } } },
-        } } })
+      model: primaryTier.model, effort: primaryTier.effort, schema: VERDICT_SCHEMA })
+
+  // 机件 #6：每批抽一个 feature 跑第二独立 evaluator（不同档位、fresh context），与主判定对比。
+  // 抽样确定性（wake_n % n，无 Math.random）；分歧 → debias_conflict 硬停交人类，防相关盲点整夜传播。
+  const feats = state.features || []
+  if (stepResult && feats.length) {
+    const s = feats[w % feats.length]
+    const primary = (stepResult.verdicts || []).find(v => v.feature_id === s.id)
+    const second = await agent(
+      `你是第二独立 evaluator（去偏抽检）。只验 feature ${s.id}：读 spec/acceptance + 实测，`
+      + `独立给 PASS/PARTIAL/FAIL。prompt 无实现叙述、无第一 evaluator 的结论（铁律 12）。`,
+      { label: `verify:debias:${s.id}`, phase: 'Wake', agentType: 'general-purpose',
+        model: secondTier.model, effort: secondTier.effort,
+        schema: { type: 'object', additionalProperties: false, required: ['feature_id', 'result'],
+          properties: { feature_id: { type: 'string' }, result: { type: 'string', enum: ['PASS', 'PARTIAL', 'FAIL'] } } } })
+    if (second && primary && second.result !== primary.result) {
+      return { decision: 'HALT', reasons: ['debias_conflict'], writeback: stepResult,
+        detail: `去偏抽检分歧 @${s.id}：主 ${primary.result}（${primaryTier.model}）vs 第二 ${second.result}（${secondTier.model}）——交人类裁决` }
+    }
+  }
   proposedNext = stepResult && stepResult.all_pass ? 'done' : 'fixing'
 }
 

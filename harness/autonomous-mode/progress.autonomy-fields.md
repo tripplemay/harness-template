@@ -38,7 +38,7 @@
 ### halt_conditions 枚举（`last_halt.condition` 取值）
 `policy_disabled` · `policy_expired` · `scope_mismatch` · `budget_breach:{tokens|cost|wakes}` ·
 `max_fix_rounds` · `no_progress` · `spec_lock_required` · `scope_drift` · `feature_blocked` ·
-`evaluator_cannot_verify` · `ci_red` · `worktree_conflict` · `batch_complete`
+`evaluator_cannot_verify` · `debias_conflict` · `ci_red` · `worktree_conflict` · `batch_complete`
 
 ## 派生（不另存字段）
 - **`spec_locked`**（gate-arbiter plan 分支用）= `!!docs.spec && features.length > 0`，

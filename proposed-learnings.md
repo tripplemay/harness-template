@@ -115,7 +115,7 @@
 **A1 · 类型：新模板（设计规范草案，已落盘待确认）**
 - **内容：** 已写 `harness/autonomous-mode.md`（提案草案）：Heartbeat 底盘 + 6+1 硬化机件 + 闸门三分类 + 建造顺序 + 前置纪律。描述的 `/autodrive`、deny-list、受限 generator subagent、Gate Arbiter、`autonomy-policy.json` **均待建**——机件没建成前不得开自主。定位 T2 按需加载，不进"每批次必读"。
 - **建议写入：** 确认后 `harness/autonomous-mode.md` 由草案转正 + `harness-rules.md` 加一条指针（自主模式见该文）+ CHANGELOG。
-- **状态：** 待确认（规范草案在 `harness/autonomous-mode.md`；机件初稿在 `harness/autonomous-mode/`：受限 generator subagent + spec-lock critic subagent + deny-list + policy schema + 校验 hook + Gate Arbiter〔build/plan 已接线〕 + `/autodrive` skill 本体 + progress.json autonomy 字段模板 + verdict 工件 schema/校验）
+- **状态：** 待确认（规范草案在 `harness/autonomous-mode.md`；机件初稿在 `harness/autonomous-mode/`：受限 generator subagent + spec-lock critic subagent + deny-list + policy schema + 校验 hook + Gate Arbiter〔build/plan 接线 + #6 去偏〕 + `/autodrive` skill 本体 + progress.json autonomy 字段模板 + verdict 工件 schema/校验）
 
 **A2 · 类型：新坑（安全缺口，独立于自主模式亦值得修）🔴**
 - **内容：** 框架只发布了 `evaluator.md` 受限工具集，**没有 generator/fix subagent 定义**。一旦用并行 §3 build subagent 或未来自主 fix wake，这些 subagent 继承 Bash + 全部 MCP 工具（含 aigc-gateway `generate_image`/`run_action` 等**花钱**工具）——可无人察觉地触发 deploy/`prisma migrate deploy`/prod 写入/花钱调用。硬闸门当前建在"状态迁移"高度，看不到"阶段内部工具调用"。
