@@ -1,9 +1,9 @@
-// DRAFT — autonomous-mode.md 机件 #4「确定性 Gate Arbiter + Governor」（待确认，未端到端演练）。
+// autonomous-mode.md 机件 #4「确定性 Gate Arbiter + Governor」。
 // 由 /loop /autodrive 每次唤醒调用一次，跑「一个指令周期」。
 // 安全关键逻辑（governor / classifyGate / budget）是纯函数，零模型判断。
 // §8 契约：引擎不 flip status——本 workflow RETURN 决策，由耐久 /autodrive 层做 commit + 推进 + 重排。
 // 约束：Workflow 内 Date 不可用 → 时间通过 args.now（ISO-8601 UTC 字符串）传入；过期硬判在 validate-autonomy-policy.sh。
-// 依赖 subagent 定义（转正后才存在）：agentType 'generator-restricted'（机件 #0）、'spec-lock-critic'（机件 #2）。
+// 依赖已装 subagent：agentType 'generator-restricted'（机件 #0）、'spec-lock-critic'（机件 #2），均在 .claude/agents/。
 
 export const meta = {
   name: 'autodrive-gate-arbiter',

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# DRAFT — autonomous-mode.md 机件 #3 验收工件内容校验（待确认，未安装）。
+# autonomous-mode.md 机件 #3：验收工件内容校验（fail-closed）。
 # 两用：(a) /autodrive 步骤 6 的 verdict 工件断言（内容校验，非仅存在）；
 #        (b) PostToolUse Write|Edit 到 docs/test-reports/*-verdict.json 的兜底 hook。
 # 核心：存在≠真实——每 feature 的 evidence / steps_to_reproduce 必须非空，机械拒收空壳。

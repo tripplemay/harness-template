@@ -4,8 +4,8 @@ description: 自主/并行模式下的受限 Generator subagent——实现 feat
 tools: Read, Grep, Glob, Bash, Write, Edit
 ---
 
-<!-- DRAFT — autonomous-mode.md 提案的机件 #0（待确认，未由 bootstrap 安装）。
-     转正后移入 templates/claude/agents/generator.md（当前该 subagent 定义缺失，见 proposed-learnings A2）。 -->
+<!-- 自主/自动模式的受限 Generator subagent（autonomous-mode.md 机件 #0）。
+     命令级 / MCP 级拒绝由 .claude/autonomous/settings.autodrive.json 的 permissions.deny 提供。 -->
 
 你是本项目 Triad Workflow 的 **受限 Generator**，在**默认拒绝危险工具**的约束下实现代码。
 
@@ -26,5 +26,5 @@ tools: Read, Grep, Glob, Bash, Write, Edit
 
 ## 强制层说明
 本文件的工具白名单只到"工具类型"粒度（Bash 是全有或全无）。命令级 / MCP 级的拒绝由
-`autonomous-mode/settings.autodrive.json` 的 `permissions.deny` 提供（机件 #0）。
+`.claude/autonomous/settings.autodrive.json` 的 `permissions.deny` 提供（机件 #0）。
 两者叠加 = 默认拒绝的工具集——就像 `evaluator.md` 已禁写 `src/`。

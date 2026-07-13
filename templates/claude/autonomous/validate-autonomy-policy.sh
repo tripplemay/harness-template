@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# DRAFT — autonomous-mode.md 机件 #1 内容校验 hook（待确认，未安装）。
+# autonomous-mode.md 机件 #1：autonomy-policy.json 内容校验（fail-closed）。
 # 两用：(a) 作为 PostToolUse Write|Edit 到 autonomy-policy.json 的校验；
 #        (b) /autodrive 启动前置断言直接调用（机件在位 = 开车前置条件）。
 # fail-closed：文件缺失 / 过期 / 非法 → 退出 2（阻断自主）。

@@ -1,5 +1,5 @@
 {
-  "_comment": "DRAFT — autonomous-mode.md 机件 #0/#1（待确认，未安装）。自主运行期间叠加到项目 .claude/settings.json 的 permissions.deny。⚠️ 权限模式语法需按当前 Claude Code 版本核对；prod 主机名 / 部署脚本名 / 花钱 MCP 工具清单按项目实际补全。宁可多拒，默认拒绝。",
+  "_comment": "autonomous-mode.md 机件 #0/#1。自主运行期间叠加到 .claude/settings.json 的 permissions.deny（正常手动开发不叠加，否则会挡住合法 deploy）。⚠️ 权限模式语法需按当前 Claude Code 版本核对；prod 主机名 / 部署脚本名 / 花钱 MCP 工具清单按项目实际补全。宁可多拒，默认拒绝。",
   "permissions": {
     "deny": [
       "Bash(gh workflow run:*)",

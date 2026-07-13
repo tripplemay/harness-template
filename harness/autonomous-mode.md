@@ -1,14 +1,14 @@
-# Autonomous Mode — 多 agent 自主开发模式（规范草案）
+# Autonomous Mode — 多 agent 自主开发模式
 
-> **状态：提案草案（待用户确认后正式纳入）。** 本文描述的 `/autodrive` 心跳、权限 deny-list、
-> 受限 generator/fix subagent、确定性 Gate Arbiter、`autonomy-policy.json` **均尚未实现**——
-> 全部标注 `待建`。在这些机件建成并通过前置检查前，**不得开启自主模式**。
+> **状态：已纳入框架（默认安装）。** 机件在 `.claude/agents/{generator-restricted,spec-lock-critic}.md`、
+> `.claude/skills/autodrive/`、`.claude/autonomous/`（gate-arbiter + 校验 hook + schema + deny-list）。
+> **安装 ≠ 自动开启**：开启自主仍需人类建 `autonomy-policy.json` + 显式 `/autodrive`；`/autodrive` 步骤 0
+> 前置断言机件在位/策略合法，否则 HARD_HALT。deploy/prod/spend 永远留人类闸门。
 >
-> **加载层级：T2（按需）。** 仅在设计/建造/运行自主开发时加载，不进"每批次必读"集。
+> **加载层级：T2（按需）。** 仅在设计/运行自主开发时加载，不进"每批次必读"集。
 >
 > **来源：** 自主 driver 架构设计 workflow `w05dglv38`（4 立场架构师 → 4 评委对抗打分 → 红队攻击领先方案）；
-> 契合度前置分析 `wt27gd5xu`。推荐架构 = S2 Heartbeat 底盘（总分 31/40，赢 resilience+implementability）
-> + S3/S4 安全机件嫁接 + 红队补的工具层 deny-list。
+> 契合度前置分析 `wt27gd5xu`。架构 = S2 Heartbeat 底盘（31/40）+ S3/S4 安全机件嫁接 + 红队补的工具层 deny-list。
 
 ---
 
@@ -42,15 +42,15 @@
 
 | 组件 | 职责 | 机制 | 状态 |
 |---|---|---|---|
-| **Heartbeat（`/loop /autodrive`）** | 耐久外层脊椎；状态机 PC 上的时钟。抗压缩、抗 kill、抗换机 | ScheduleWakeup 按阶段间隔重唤醒；每次唤醒以 commit 结束；停止时 loop-cancel | 待建 |
-| **Dispatcher（`/autodrive` skill）** | 每次唤醒：取状态 → 解码 status→动作 → 路由到既有角色入口 → 闸门检查 → 续或停。**只派发，无评估权** | skill 文件；读 progress/features/policy，映射 status 到 `/plan\|/build\|/verify` 单步 | 待建 |
-| **Autonomy Policy（`autonomy-policy.json`）** | 书面预授权（§6）+ 保持诚实的机器 | git-tracked JSON，锁定单批次、`expires_at` 时间盒；**只读**（见 §7）| 待建 |
+| **Heartbeat（`/loop /autodrive`）** | 耐久外层脊椎；状态机 PC 上的时钟。抗压缩、抗 kill、抗换机 | ScheduleWakeup 按阶段间隔重唤醒；每次唤醒以 commit 结束；停止时 loop-cancel | 已装 |
+| **Dispatcher（`/autodrive` skill）** | 每次唤醒：取状态 → 解码 status→动作 → 路由到既有角色入口 → 闸门检查 → 续或停。**只派发，无评估权** | skill 文件；读 progress/features/policy，映射 status 到 `/plan\|/build\|/verify` 单步 | 已装 |
+| **Autonomy Policy（`autonomy-policy.json`）** | 书面预授权（§6）+ 保持诚实的机器 | git-tracked JSON，锁定单批次、`expires_at` 时间盒；**只读**（见 §7）| 已装 |
 | **临时 Workflow** | 在单次唤醒内执行 §4 验收 / §3 并行，不跨唤醒泄漏编排状态 | Workflow（agent/parallel/pipeline + budget + worktree）；§8：逐 feature 落盘、边界 return、不 flip status | 复用 §8 契约 |
 | **隔离 evaluator subagent** | 无自评保证（铁律 4/12） | **复用** `.claude/agents/evaluator.md`（受限工具集，禁写 src/prisma/sdk/config）；prompt 只含 {批次 id, 路径, L2-flag} | ✅ 已存在 |
-| **受限 generator/fix subagent** | 让 build/fix 也跑在默认拒绝的工具集下 | **新增** agent 定义，镜像 evaluator.md 的受限做法；配合 §7 deny-list | 待建 🔴 |
-| **Verdict emitter** | 喂沉淀引擎（§8.4），防自主整夜静默饿死 | verify 步未产出 `docs/test-reports/{BL-id}-verdict.json`（含**每 feature 非空证据**）不许 commit | 待建 |
-| **Accountant** | 每次无人值守跨越可审计（铁律 6） | 每跨一个边界追加 `session_notes['autodriver']` + `autonomy_ledger` 条目，随迁移一起 commit | 待建 |
-| **Gate Arbiter + Governor** | 闸门分类 + 预算 + 停机判定；**确定性纯函数，非模型判断** | JS：`f(status, verdicts, artifacts, policy, ledger) → 动作/halt`；每次唤醒头部跑 | 待建 |
+| **受限 generator/fix subagent** | 让 build/fix 也跑在默认拒绝的工具集下 | **新增** agent 定义，镜像 evaluator.md 的受限做法；配合 §7 deny-list | 已装 🔴 |
+| **Verdict emitter** | 喂沉淀引擎（§8.4），防自主整夜静默饿死 | verify 步未产出 `docs/test-reports/{BL-id}-verdict.json`（含**每 feature 非空证据**）不许 commit | 已装 |
+| **Accountant** | 每次无人值守跨越可审计（铁律 6） | 每跨一个边界追加 `session_notes['autodriver']` + `autonomy_ledger` 条目，随迁移一起 commit | 已装 |
+| **Gate Arbiter + Governor** | 闸门分类 + 预算 + 停机判定；**确定性纯函数，非模型判断** | JS：`f(status, verdicts, artifacts, policy, ledger) → 动作/halt`；每次唤醒头部跑 | 已装 |
 
 ---
 
@@ -111,17 +111,17 @@
 
 | # | 机件 | 堵住的漏洞 | 来源 | 状态 |
 |---|---|---|---|---|
-| **0** 🔴 | 工具层 deny-list + 受限 generator/fix subagent（见 §6） | 阶段内不可逆/花钱工具调用绕过全部闸门 | 红队 | 待建 |
-| 1 | `autonomy-policy.json` **只读**（driver 及 subagent 禁写，含禁 Bash `printf > file` 旁路）；缺失/过期/非法 ⇒ 所有闸门 **fail-closed 硬停** | loop 改自己的授权令牌 | S3 | 待建 |
-| 2 | **独立 spec-lock critic**：每次 writeback 前跑 `git diff`，越 scope 文件 / commit tag 不映射 features.json 即拦；tag→feature 校验进 pre-commit | scope 漂移拖到 signoff 才发现 | S3 | 待建 |
-| 3 | 对抗复核**扩展到抽样 PASS 项**查证据；verdict 工件 schema 强制每 feature 非空 `steps_to_reproduce + evidence`，机械拒收无证据 PASS | 首轮全 PASS 零审查橡皮图章 + 沉淀灌空壳 | S3+S4 | 待建 |
-| 4 | **确定性 JS Gate Arbiter + Budget Governor**（纯函数，非模型判断） | 模型误判进安全关键路径 | S3 | 待建 |
-| 5 | `progress.json` 加 **autonomy_ledger**（累计 token/cost/fix_round/verdict_ref）+ 显式 `halt_conditions` + 重启时 worktree 与 features.json 对账 | 推理成本跑飞 / 工件缺失无限重跑 / 崩溃恢复 | S4 | 待建 |
+| **0** 🔴 | 工具层 deny-list + 受限 generator/fix subagent（见 §6） | 阶段内不可逆/花钱工具调用绕过全部闸门 | 红队 | 已装 |
+| 1 | `autonomy-policy.json` **只读**（driver 及 subagent 禁写，含禁 Bash `printf > file` 旁路）；缺失/过期/非法 ⇒ 所有闸门 **fail-closed 硬停** | loop 改自己的授权令牌 | S3 | 已装 |
+| 2 | **独立 spec-lock critic**：每次 writeback 前跑 `git diff`，越 scope 文件 / commit tag 不映射 features.json 即拦；tag→feature 校验进 pre-commit | scope 漂移拖到 signoff 才发现 | S3 | 已装 |
+| 3 | 对抗复核**扩展到抽样 PASS 项**查证据；verdict 工件 schema 强制每 feature 非空 `steps_to_reproduce + evidence`，机械拒收无证据 PASS | 首轮全 PASS 零审查橡皮图章 + 沉淀灌空壳 | S3+S4 | 已装 |
+| 4 | **确定性 JS Gate Arbiter + Budget Governor**（纯函数，非模型判断） | 模型误判进安全关键路径 | S3 | 已装 |
+| 5 | `progress.json` 加 **autonomy_ledger**（累计 token/cost/fix_round/verdict_ref）+ 显式 `halt_conditions` + 重启时 worktree 与 features.json 对账 | 推理成本跑飞 / 工件缺失无限重跑 / 崩溃恢复 | S4 | 已装 |
 | 6 | evaluator **档位确定性轮换**（wake_n）+ 每批抽一 feature 跑第二独立 evaluator（不同档位/fresh context，分歧 → `debias_conflict` 硬停）；`proposed-learnings.md` 收割**永远人类确认** | 相关性偏差（自主比人更快传播陈旧误报目录） | S4 | 已接线 gate-arbiter |
 
 ---
 
-## 8. `autonomy-policy.json` schema（草案）
+## 8. `autonomy-policy.json` schema
 
 ```jsonc
 {
@@ -175,16 +175,15 @@
 工具 deny-list（settings.json）、确定性 Gate Arbiter Workflow、spec-lock critic subagent、
 verdict 工件 schema 校验、progress.json 的 `autonomy_ledger`/`halt_conditions`/`wake_in_progress` 字段。
 
-> **初稿草案已在 `harness/autonomous-mode/`（未安装，转正后移入 `templates/claude/`）：**
-> - `agent-generator-restricted.md` — 机件 #0 受限 generator/fix subagent
-> - `settings.autodrive.json` — 机件 #0/#1 工具 deny-list（deploy/migrate/prod/花钱 MCP + policy 只读）
-> - `autonomy-policy.schema.json` — 机件 #1 策略 schema（auto_cross 枚举只含 A/B，结构性禁 C）
-> - `validate-autonomy-policy.sh` — 机件 #1 fail-closed 内容校验 hook（含过期时间门）
-> - `gate-arbiter.workflow.js` — 机件 #4 Gate Arbiter（纯函数 governor/闸门 + **build/plan 已接线** + #2/#3/#5/#6 嫁接）
-> - `agent-spec-lock-critic.md` — 机件 #2 独立 spec-lock 稽核 subagent（只读只判，build/fix 后稽核越界 → 越界 HALT）
-> - `skill-autodrive.md` — Dispatcher / §4 控制流：单次唤醒指令周期（前置断言 → 取状态 → 锁 → 派发 → 机械回写 → 闸门 → 重排）
-> - `progress.autonomy-fields.md` — 机件 #5 progress.json `autonomy` 命名空间块（status/policy_version/wake_in_progress/last_halt/ledger + halt_conditions 枚举；spec_locked 派生不另存）
-> - `verdict-artifact.schema.json` + `validate-verdict-artifact.sh` — 机件 #3 验收工件 schema + fail-closed 内容校验（每 feature 证据非空，拒收空壳）
+> **机件安装位置（bootstrap 默认铺入 `.claude/`）：**
+> - `.claude/agents/generator-restricted.md` — 机件 #0 受限 generator/fix subagent
+> - `.claude/agents/spec-lock-critic.md` — 机件 #2 独立 spec-lock 稽核 subagent（只读只判，越界 HALT）
+> - `.claude/skills/autodrive/SKILL.md` — Dispatcher / §4 控制流：单次唤醒指令周期
+> - `.claude/autonomous/gate-arbiter.workflow.js` — 机件 #4 Gate Arbiter（纯函数 governor/闸门 + build/plan 接线 + #2/#3/#5/#6 嫁接）
+> - `.claude/autonomous/settings.autodrive.json` — 机件 #0/#1 工具 deny-list（**开启自主时人类手动合入 settings.json**，正常开发不叠加）
+> - `.claude/autonomous/autonomy-policy.schema.json` + `validate-autonomy-policy.sh` — 机件 #1 策略 schema + fail-closed 校验
+> - `.claude/autonomous/verdict-artifact.schema.json` + `validate-verdict-artifact.sh` — 机件 #3 验收工件 schema + fail-closed 校验
+> - `.claude/autonomous/progress.autonomy-fields.md` — 机件 #5 progress.json `autonomy` 命名空间块（自主开启时合入，默认不铺）
 >
-> **仍待建：** §9 并发锁获取 / 心跳存活告警的**运行时实现**（字段已定义，逻辑在 /autodrive 草案）、
-> `generator-restricted`/`spec-lock-critic` 等 agentType 转正安装后方可真正派发、以及端到端演练。
+> **仍待建（需接真实项目验证）：** §9 并发锁获取 / 心跳存活告警的运行时实现（字段/逻辑已在骨架）、
+> gate-arbiter 的 build/plan 分支接真实 `/build` `/plan` 逻辑、以及一次端到端演练。

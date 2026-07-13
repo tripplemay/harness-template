@@ -102,43 +102,8 @@
 - **建议写入：** `harness-rules.md` 铁律 2/3 理由重述（"跨设备恢复 + 抗压缩" → "抗压缩持久 + 审计轨迹"）。
 - **状态：** 待确认
 
----
-
-## [2026-07-12] Claude（自主开发架构设计 · 独立任务）— 来源：多 agent 自主 driver 架构设计 workflow w05dglv38（4 立场架构师 → 4 评委对抗打分 → 红队攻击领先方案）
-
-**背景：** 用户问"能否在本框架下实现多 agent 自主推进 / 自主开发"。经 design workflow 评估：**可以，且状态机脊椎天然适合当自主骨架**。推荐架构 = S2 Heartbeat（`/loop` 心跳把 progress.json.status 当程序计数器，31/40 领先）+ S3/S4 安全机件嫁接。红队核心发现：所有架构把硬保证放在**状态迁移高度**，但危险动作（deploy/prod/花钱）是**阶段内部工具调用**，闸门分类器看不到——真正的强制在**工具层 deny-list**。
-
-**S1（deterministic-first）架构师本轮 API stall 失败未参评**（其"临时 Workflow 当整个骨架"路线抗压缩最弱，损失不大）。
-
----
-
-**A1 · 类型：新模板（设计规范草案，已落盘待确认）**
-- **内容：** 已写 `harness/autonomous-mode.md`（提案草案）：Heartbeat 底盘 + 6+1 硬化机件 + 闸门三分类 + 建造顺序 + 前置纪律。描述的 `/autodrive`、deny-list、受限 generator subagent、Gate Arbiter、`autonomy-policy.json` **均待建**——机件没建成前不得开自主。定位 T2 按需加载，不进"每批次必读"。
-- **建议写入：** 确认后 `harness/autonomous-mode.md` 由草案转正 + `harness-rules.md` 加一条指针（自主模式见该文）+ CHANGELOG。
-- **状态：** 待确认（规范草案在 `harness/autonomous-mode.md`；机件初稿在 `harness/autonomous-mode/`：受限 generator subagent + spec-lock critic subagent + deny-list + policy schema + 校验 hook + Gate Arbiter〔build/plan 接线 + #6 去偏〕 + `/autodrive` skill 本体 + progress.json autonomy 字段模板 + verdict 工件 schema/校验）
-
-**A2 · 类型：新坑（安全缺口，独立于自主模式亦值得修）🔴**
-- **内容：** 框架只发布了 `evaluator.md` 受限工具集，**没有 generator/fix subagent 定义**。一旦用并行 §3 build subagent 或未来自主 fix wake，这些 subagent 继承 Bash + 全部 MCP 工具（含 aigc-gateway `generate_image`/`run_action` 等**花钱**工具）——可无人察觉地触发 deploy/`prisma migrate deploy`/prod 写入/花钱调用。硬闸门当前建在"状态迁移"高度，看不到"阶段内部工具调用"。
-- **建议写入：** 新增受限 generator/fix subagent 定义（镜像 `templates/claude/agents/evaluator.md`）+ 一份可选 deny-list settings 模板（deploy/migrate/prod 主机名/prod 分支 push/aigc-gateway 花钱工具）；`orchestration-patterns.md` §3 并行 building 补一句"并行 subagent 应跑受限工具集"。
-- **状态：** 待确认（修复初稿已落 `harness/autonomous-mode/agent-generator-restricted.md` + `settings.autodrive.json`；缺 `templates/claude/agents/generator.md` 转正 + §3 补句）
-
-**A3 · 类型：铁律澄清（红队暴露的机制化盲区）**
-- **内容：** 铁律 12（不污染 evaluator prompt）当前是**模型自律**，非机制化——长 wake 里累积的实现叙述可能漏进 evaluator prompt。应把 verify 的 evaluator prompt 做成**固定模板**，只插值 {批次, spec/feature 路径, L2-flag}，无自由文本字段，从 fresh 子上下文派发。
-- **建议写入：** `templates/claude/skills/verify/SKILL.md`（prompt 组装确定化）+ `harness-rules.md` 铁律 12 补"机制化优先"。
-- **状态：** 待确认
-
----
-
-## [2026-07-12] Claude（进度看板机制 · 独立任务）— 来源：用户希望长时开发中有图形化看板观测研发进度
-
-**背景：** 利用 Claude Artifact 做项目进度看板。关键约束：Artifact 严格 CSP **禁 fetch**——读不了磁盘 JSON，故看板是**快照**，由 harness 在阶段边界**重渲染 + 重发到同一 URL**（存 `progress.json.dashboard_url`）。数据零额外来源——全来自已落盘状态文件。样例已发布验证观感。
-
-**D1 · 类型：新模板 + 新 skill（草案已落盘待确认）**
-- **内容：** 已写 `harness/dashboard/`（草案，未安装）：`dashboard.template.html`（内联 CSS 自包含渲染骨架，tokenized + REPEAT 块）+ `skill-dashboard.md`（`/dashboard`：读 progress/features/backlog → 套模板 → 首发写回 `dashboard_url`/后续传 `url` 更新同一看板）。看板是**只读镜像非真相源**，只读状态+发布、不 flip status。
-- **建议写入：** 转正后 `dashboard.template.html` → `templates/dashboard.template.html`；`skill-dashboard.md` → `templates/claude/skills/dashboard/SKILL.md`；`progress.json` 加 `dashboard_url` 字段（`progress.init.json` 初值 `null`）；`bootstrap.sh` 铺入；`harness-rules.md` §四阶段边界例程 + CLAUDE.md 启动流程各加一句"顺手刷看板"；CHANGELOG。
-- **状态：** 待确认（样例 artifact 已发布验证观感）
-
-**D2 · 类型：新规律（顺带红利）**
-- **内容：** 看板默认私有、可从 artifact 页分享只读链接给非技术干系人；与自主模式天然搭——`/autodrive` 隔夜每唤醒的阶段边界顺手刷，早上打开即一夜进度；`autonomy_ledger` 可喂 token/成本 sparkline。
-- **建议写入：** `harness/autonomous-mode.md` 补一句"每唤醒阶段边界顺手 /dashboard"；`harness/dashboard/skill-dashboard.md` 已含分享说明。
-- **状态：** 待确认
+<!-- 2026-07-13: 自主开发模式 + 进度看板 沉淀完成（用户确认，默认安装）。
+     自主：机件转正入 templates/claude/{agents/{generator-restricted,spec-lock-critic}.md, skills/autodrive/, autonomous/*}；harness/autonomous-mode.md 转正为 T2 规范。
+     看板：templates/dashboard.template.html + templates/claude/skills/dashboard/SKILL.md + progress.init.json(dashboard_url) + bootstrap chmod + harness-rules §四 + templates/CLAUDE.md。
+     CHANGELOG v1.0.3。归档：archive/proposed-learnings-archive-v1.0.3.md。
+     注：harness-fit 分析（P0-P2）不在本次确认范围，仍保留待确认。 -->

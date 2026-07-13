@@ -5,6 +5,29 @@
 
 ---
 
+## v1.0.3 — 2026-07-13（自主开发模式 + 进度看板：默认安装）
+
+**来源：** 单工具 Claude + dynamic Workflow 工作流下两项能力落地，用户确认默认安装。
+- 自主开发模式：design workflow `w05dglv38`（4 立场架构师 → 4 评委对抗打分 → 红队攻击领先方案 S2 Heartbeat）
+- 进度看板：Claude Artifact 快照（CSP 禁 fetch → 阶段边界重渲染 + 重发同一 URL）
+
+**变更（自主开发模式，默认安装到 `.claude/`）：**
+- `templates/claude/agents/generator-restricted.md`（机件 #0 受限 generator，配 deny-list）、`spec-lock-critic.md`（机件 #2 越界稽核，只读只判）
+- `templates/claude/skills/autodrive/SKILL.md`（Dispatcher / §4 单次唤醒指令周期，前置断言 fail-closed）
+- `templates/claude/autonomous/`：`gate-arbiter.workflow.js`（机件 #4 纯函数 governor/闸门 + #2/#3/#5/#6 嫁接）、`autonomy-policy.schema.json` + `validate-autonomy-policy.sh`（机件 #1）、`verdict-artifact.schema.json` + `validate-verdict-artifact.sh`（机件 #3）、`settings.autodrive.json`（deny-list，开启自主时人类手动合入）、`progress.autonomy-fields.md`（机件 #5，默认不铺 progress.init.json）
+- `harness/autonomous-mode.md` 规范文档（T2）；`bootstrap.sh` 加 `.claude/autonomous/*.sh` chmod
+- **安全边界：** 安装 ≠ 开启；开启需人类建 `autonomy-policy.json` + 显式 `/autodrive`（步骤 0 前置断言机件/策略，否则 HARD_HALT）；deploy/prod/spend 永留人类闸门（工具层 deny-list，非闸门分类器）
+- **仍待建（需接真实项目）：** §9 并发锁 / 存活告警运行时、gate-arbiter build/plan 接真实 `/build` `/plan`、端到端演练
+
+**变更（进度看板，默认安装）：**
+- `templates/dashboard.template.html`（内联 CSS 自包含渲染骨架，禁 fetch/外链）+ `templates/claude/skills/dashboard/SKILL.md`（`/dashboard`：读状态 → 套模板 → 首发写回 `dashboard_url` / 后续传 `url` 更新同一 Artifact）
+- `progress.init.json` 加 `dashboard_url: null`；`harness-rules.md §四` + `templates/CLAUDE.md` 各加"阶段边界顺手刷看板"
+- 看板是**只读镜像非真相源**；默认私有，可分享只读链接给非技术干系人
+
+**兼容性：** 均为新增，不改状态机 7 状态 / 既有字段 / 角色协议。自主模式默认不开启（无 policy 即 inert）。存量项目重跑 bootstrap 或增量拷贝 `.claude/` 即得。
+
+---
+
 ## v1.0.2 — 2026-07-12（orchestration §8：Workflow ⇄ progress.json 日志契约）
 
 **来源：** 单工具 Claude + dynamic Workflow 工作流契合度评估（本会话 workflow wt27gd5xu，三视角 + 红队对抗复核）。用户已把主 coding 工作流收敛到单工具、编码阶段用 dynamic Workflow 编排；评估确认 harness 高契合，但把"阶段内部编排"交给引擎需先定交接契约，否则引入正确性回归。

@@ -3,9 +3,7 @@ name: dashboard
 description: 渲染/刷新项目研发进度看板 Artifact——从 progress.json + features.json + backlog.json 渲染自包含 HTML，发布到 progress.json.dashboard_url 指向的同一 Artifact URL。在阶段边界或用户说"刷新看板"时使用。
 ---
 
-<!-- DRAFT — 图形化进度看板机制提案（待确认，未安装）。
-     转正后：skill 移入 templates/claude/skills/dashboard/SKILL.md、模板移入 templates/dashboard.template.html、
-     progress.json 加 `dashboard_url` 字段（progress.init.json 初值 null）。 -->
+<!-- 项目进度看板机制。渲染模板在 framework/templates/dashboard.template.html；progress.json 用 dashboard_url 字段。 -->
 
 # /dashboard — 项目进度看板（Artifact 快照）
 
@@ -22,7 +20,7 @@ description: 渲染/刷新项目研发进度看板 Artifact——从 progress.js
    - `progress.json` — status / current_sprint / fix_rounds / completed_features / total_features / docs.signoff / session_notes / evaluator_feedback / `dashboard_url`
    - `features.json` — 每条 id / title / executor / status / acceptance / verdict
    - `backlog.json` — 需求池条目
-2. **渲染**：套 `framework/harness/dashboard/dashboard.template.html`（CSS 已内联，自包含）逐 token 填充：
+2. **渲染**：套 `framework/templates/dashboard.template.html`（CSS 已内联，自包含）逐 token 填充：
    - 顶栏：项目名、批次 id+title、车道、CI 状态、签收状态、当前阶段徽章（+ fix_round + 阶段角色）
    - 状态机流水线：7 状态按当前 status 标 `done` / `cur` / `next`
    - 指标瓦片：completed/total 环形（`--pct`）、fix_rounds、CI、签收

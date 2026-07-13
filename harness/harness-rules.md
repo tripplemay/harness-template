@@ -179,6 +179,7 @@ evaluator: Reviewer
 
 ### 第四步：阶段边界更新 progress.json
 每个阶段结束后必须更新 progress.json 中的 status 字段并 commit，再进入下一阶段或结束会话。快车道同会话流转也不得跳过。
+阶段边界可顺手 `/dashboard` 刷新图形化进度看板（Artifact 快照，URL 存 `progress.json.dashboard_url`，模板见 `framework/templates/dashboard.template.html`）。长时无人值守自主推进见 `framework/harness/autonomous-mode.md`（可选，默认不开启）。
 
 ### 第五步：会话结束时更新共享记忆（所有角色通用）
 每次会话结束前，执行以下两项：

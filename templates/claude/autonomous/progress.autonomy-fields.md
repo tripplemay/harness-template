@@ -1,6 +1,6 @@
 # progress.json 自主模式字段（草案）
 
-> DRAFT — autonomous-mode.md 机件 #5 的状态字段（待确认，**未**落入 `harness/progress.init.json`）。
+> autonomous-mode.md 机件 #5 的状态字段（**不**在 `progress.init.json` 默认铺入）。
 > 自主模式开启时把下面的 `autonomy` 命名空间块合并进项目 progress.json；关闭自主时整块删除即可，
 > 不污染基础状态机字段。**遵循「每条信息只存一处」：这里只放自主运行的过程状态，不重复 status/features。**
 

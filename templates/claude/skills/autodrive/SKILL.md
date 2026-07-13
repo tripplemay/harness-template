@@ -3,21 +3,20 @@ name: autodrive
 description: 自主开发心跳的单次唤醒入口——把 progress.json.status 当程序计数器，跑一个指令周期（取状态→派发单阶段步→机械回写→闸门检查→推进或硬停→自排下一次）。仅在已装机件 + 合法 autonomy-policy.json 存在时使用；配合 /loop 动态自排程。
 ---
 
-<!-- DRAFT — autonomous-mode.md 的 Dispatcher 组件 + §4 控制流（待确认，未安装）。
-     转正后移入 templates/claude/skills/autodrive/SKILL.md。
-     本 skill 是耐久层：调 gate-arbiter.workflow.js 拿决策，自己按下 commit/推进/重排键（§8：引擎不 flip status）。 -->
+<!-- autonomous-mode.md 的 Dispatcher 组件 + §4 控制流。
+     本 skill 是耐久层：调 .claude/autonomous/gate-arbiter.workflow.js 拿决策，自己按下 commit/推进/重排键（§8：引擎不 flip status）。 -->
 
 # /autodrive — 自主心跳单次唤醒（一个指令周期）
 
 **你是耐久层，不是评估者。** 每次唤醒严格按序执行；任一步 fail-closed 就**硬停并停止排程**，不留半开状态。
-完整设计见 `harness/autonomous-mode.md`。**可逆内环先行；deploy/prod/spend 永远留人类闸门。**
+完整设计见 `framework/harness/autonomous-mode.md`。**可逆内环先行；deploy/prod/spend 永远留人类闸门。**
 
 ## 步骤 0 —— 前置机件断言（机件在位 = 开车前置条件；缺一即 HARD_HALT）
 
 开跑前逐项断言，**任一不满足 → 打印原因、`ScheduleWakeup(stop:true)`、STOP，不回写、不排下一次**：
 
-1. `.claude/settings.json` 已合入 `autonomous-mode/settings.autodrive.json` 的 deny-list（deploy/migrate/prod/花钱 MCP + policy 只读）
-2. `bash harness/autonomous-mode/validate-autonomy-policy.sh autonomy-policy.json` 退出 0（策略合法、未过期、`auto_cross` 不含 C、`authorized_by=user`）
+1. `.claude/settings.json` 已合入 `.claude/autonomous/settings.autodrive.json` 的 deny-list（deploy/migrate/prod/花钱 MCP + policy 只读）
+2. `bash .claude/autonomous/validate-autonomy-policy.sh autonomy-policy.json` 退出 0（策略合法、未过期、`auto_cross` 不含 C、`authorized_by=user`）
 3. 受限 subagent 定义就位：`generator-restricted`（build/fix 用）+ `spec-lock critic`（写盘前用）
 4. verdict 工件 schema 校验 hook 就位（机件 #3）
 
@@ -36,7 +35,7 @@ description: 自主开发心跳的单次唤醒入口——把 progress.json.stat
 - 若 status 隐含的步已反映在状态里（如"下一 pending feature"实际已 completed，说明上次 execute 后、writeback 前崩溃）→ 前跳，不重做该步
 
 ## 步骤 4 —— 派发一个指令周期（调 Gate Arbiter）
-- 运行 `harness/autonomous-mode/gate-arbiter.workflow.js`，传 `args = { state, policy, ledger, now, diff }`（`diff` = 本批未提交 `git diff`，供 spec-lock critic）
+- 运行 `.claude/autonomous/gate-arbiter.workflow.js`，传 `args = { state, policy, ledger, now, diff }`（`diff` = 本批未提交 `git diff`，供 spec-lock critic）
 - Arbiter 内部：纯函数 `governor` 判 halt → `decode` status → 会写盘前先跑 spec-lock critic → EXECUTE 单步（verify 派隔离 evaluator + PASS 抽样查证据；build 派 `generator-restricted`）
 - Arbiter **返回决策**，不 flip status：`{ decision, gateClass, proposedNext, writeback, reasons }`
 

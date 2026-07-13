@@ -47,6 +47,7 @@ cp "$SRC_PREFIX/harness/progress.init.json"         "$TARGET_DIR/progress.json"
 mkdir -p "$TARGET_DIR/.claude"
 cp -r "$SRC_PREFIX/templates/claude/." "$TARGET_DIR/.claude/"
 chmod +x "$TARGET_DIR/.claude/hooks/"*.sh
+chmod +x "$TARGET_DIR/.claude/autonomous/"*.sh   # 自主模式校验 hook（机件 #1/#3）
 
 # 2. 状态机初始数据
 cat > "$TARGET_DIR/features.json" <<'JSON'

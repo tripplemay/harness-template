@@ -20,6 +20,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **编排：** 并行实现、fan-out 验收、后台 CI、/loop 场景见 `orchestration-patterns.md`（同会话快车道为默认；跨机器 / 独立实例走 git 总线慢车道）。
 
+**进度看板：** 阶段边界可 `/dashboard` 刷新图形化看板（Artifact 快照，URL 存 `progress.json.dashboard_url`）。
+
+**自主模式（可选）：** 长时无人值守推进见 `framework/harness/autonomous-mode.md` 与 `/autodrive`；开启需人类建 `autonomy-policy.json` 并手动合入 deny-list，deploy/prod/spend 永留人类闸门。
+
 ---
 
 ## Project Overview

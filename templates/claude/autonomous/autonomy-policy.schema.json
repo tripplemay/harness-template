@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "autonomy-policy",
-  "description": "DRAFT — autonomous-mode.md 机件 #1 的策略 schema（待确认）。书面预授权令牌（铁律 6 / orchestration §6）；只读——agent 禁写，只有人类可授权。",
+  "description": "autonomous-mode.md 机件 #1 的策略 schema。书面预授权令牌（铁律 6 / orchestration §6）；只读——agent 禁写，只有人类可授权。",
   "type": "object",
   "additionalProperties": false,
   "required": ["enabled", "batch_scope", "authorized_by", "expires_at", "auto_cross", "budget"],
