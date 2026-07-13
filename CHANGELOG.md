@@ -5,6 +5,22 @@
 
 ---
 
+## v1.0.2 — 2026-07-12（orchestration §8：Workflow ⇄ progress.json 日志契约）
+
+**来源：** 单工具 Claude + dynamic Workflow 工作流契合度评估（本会话 workflow wt27gd5xu，三视角 + 红队对抗复核）。用户已把主 coding 工作流收敛到单工具、编码阶段用 dynamic Workflow 编排；评估确认 harness 高契合，但把"阶段内部编排"交给引擎需先定交接契约，否则引入正确性回归。
+
+**触发原因（红队暴露的两类回归 + 一处恢复盲区）：**
+- Workflow 的 loop-until-done 天生自主推进到"完成"，会越过 orchestration §6 硬铁律「→verifying/→done 不得无人值守自动完成」的用户闸门 → 正确性回归
+- in-tool Workflow 若只在 context 里验完、不落命名验收工件，`proposed-learnings.md` 会因无 emitter 而**静默饿死**（本文件当时已现"当前无待确认提案"征兆）→ 框架自我进化引擎停摆
+- fan-out 途中崩溃（5 条验了 3 条）留下 progress.json 不表示的中间态 → 断点恢复铁律未贯彻到阶段内部
+
+**变更：**
+- `harness/orchestration-patterns.md` 新增 §8「Workflow run ⇄ progress.json 日志契约」：① 引擎不得自主越阶段边界（return 交还用户闸门）② 状态机械原样回写（铁律 12）③ 每验完一条即落盘 features.json 抗中途崩溃 ④ 每轮产出命名验收工件 `{BL-id, verdict, fix_round, 证据摘要}` 回喂沉淀；文末版本历史补 2026-07-12 行
+
+**兼容性：** 纯新增文档小节，不改状态机 / 字段 / 既有编排语义。相关但未纳入本版的提案（/verify /build skill 真正 invoke Workflow、慢车道拆分、快车道热路径剥离、存量项目接入等）留在 `proposed-learnings.md` 待后续确认。
+
+---
+
 ## v1.0.1 — 2026-07-12（patterns/deploy §7 不可逆生产迁移剧本）
 
 **来源：** aigcgateway BL-PROD-MIGRATE-DEPLOYSVR（生产从 GCP 原生 PM2 `34.180.93.185` 迁到 deploysvr `194.238.26.173` 容器化，用户手工验收通过）。

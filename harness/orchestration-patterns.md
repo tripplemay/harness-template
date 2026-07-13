@@ -138,8 +138,41 @@
 
 ---
 
+## 8. Workflow run ⇄ progress.json 日志契约
+
+> 当阶段内部编排交给 Claude dynamic Workflow（fan-out 验收、并行 building、loop-until-dry）时，
+> 引擎的**临时**编排状态与状态机的**持久**骨架必须对账。本节定义交接契约——
+> 不定清楚，现代化会引入两类正确性回归（自动越阶段闸门 / 中途崩溃丢中间态）。
+
+**altitude 边界（不可违反）：**
+
+1. **引擎不得自主越过阶段边界。** Workflow 的 loop-until-done 天生会推进到"完成"并自排下一步，
+   但 §6 硬铁律要求 `→ verifying` / `→ done` 必须停下等用户确认。
+   **Workflow 脚本必须在阶段边界 return 交还主上下文/用户，绝不自行 flip status 跨阶段**——
+   引擎只跑"阶段内部"。fixing⟷reverifying 的循环语义可由引擎承载，但每轮的 status 流转仍走状态机 + 用户闸门。
+
+2. **状态回写是机械的、原样的。** Workflow 返回结构化结果后，由主上下文机械写回 progress.json / features.json：
+   evaluator subagent 的 evaluator_feedback **原样**写入（铁律 12，不洗白、不筛选、不软化）；
+   FAIL/PARTIAL 的 feature status 改回 pending。汇总环节不得二次评估。
+
+3. **中途崩溃的双状态对账。** progress.json 把阶段状态建模为原子（evaluator_feedback 在 verify 末尾一次写入），
+   但 fan-out 途中崩溃（5 条验了 3 条）会留下状态机不表示的中间态。
+   **Workflow 脚本每验完一条 feature 即把该条结果落盘 features.json**（pipeline 逐条落，不等全量），
+   使任意时刻崩溃都能从 features.json 无损续跑——把断点恢复铁律贯彻到阶段内部。
+
+4. **验收工件必须持久化回喂沉淀。** 每个 verify Workflow run 结束，必须产出一份命名验收工件
+   `{ BL-id, verdict: PASS|PARTIAL|FAIL, fix_round, 证据摘要 }` 落 `docs/test-reports/`。
+   **这是框架自我进化引擎的燃料**：沉淀闭环靠每批次一份 Evaluator 验收记录喂养，
+   in-tool Workflow 若只在 context 里验完不落工件，`proposed-learnings.md` 会因无 emitter 而静默饿死。
+
+**一句话契约：** 引擎拥有"阶段内部怎么跑"，progress.json 拥有"跨阶段的真相与流转闸门"；
+引擎每步结果都要落进持久文件，引擎永不自己按下阶段推进键。
+
+---
+
 ## 版本历史
 
 | 日期 | 修订 | 来源 |
 |---|---|---|
 | 2026-07-09 | 初版（v1.0）：快车道标准流 / 并行 building / fan-out 验收 + 对抗复核 / Workflow 与 /loop 场景 / 模型分层 / 慢车道保留场景 | 框架 v1.0 重构（适配 Claude Code subagent + Workflow + plan mode + hooks 时代） |
+| 2026-07-12 | §8 Workflow ⇄ progress.json 日志契约（阶段边界不自动越 / 机械原样回写 / 逐条落盘抗崩溃 / 验收工件回喂沉淀） | harness-fit 分析 wt27gd5xu（红队：naive 上 Workflow 是正确性回归 + 沉淀饿死风险） |
