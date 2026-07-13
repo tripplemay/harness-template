@@ -126,3 +126,19 @@
 - **内容：** 铁律 12（不污染 evaluator prompt）当前是**模型自律**，非机制化——长 wake 里累积的实现叙述可能漏进 evaluator prompt。应把 verify 的 evaluator prompt 做成**固定模板**，只插值 {批次, spec/feature 路径, L2-flag}，无自由文本字段，从 fresh 子上下文派发。
 - **建议写入：** `templates/claude/skills/verify/SKILL.md`（prompt 组装确定化）+ `harness-rules.md` 铁律 12 补"机制化优先"。
 - **状态：** 待确认
+
+---
+
+## [2026-07-12] Claude（进度看板机制 · 独立任务）— 来源：用户希望长时开发中有图形化看板观测研发进度
+
+**背景：** 利用 Claude Artifact 做项目进度看板。关键约束：Artifact 严格 CSP **禁 fetch**——读不了磁盘 JSON，故看板是**快照**，由 harness 在阶段边界**重渲染 + 重发到同一 URL**（存 `progress.json.dashboard_url`）。数据零额外来源——全来自已落盘状态文件。样例已发布验证观感。
+
+**D1 · 类型：新模板 + 新 skill（草案已落盘待确认）**
+- **内容：** 已写 `harness/dashboard/`（草案，未安装）：`dashboard.template.html`（内联 CSS 自包含渲染骨架，tokenized + REPEAT 块）+ `skill-dashboard.md`（`/dashboard`：读 progress/features/backlog → 套模板 → 首发写回 `dashboard_url`/后续传 `url` 更新同一看板）。看板是**只读镜像非真相源**，只读状态+发布、不 flip status。
+- **建议写入：** 转正后 `dashboard.template.html` → `templates/dashboard.template.html`；`skill-dashboard.md` → `templates/claude/skills/dashboard/SKILL.md`；`progress.json` 加 `dashboard_url` 字段（`progress.init.json` 初值 `null`）；`bootstrap.sh` 铺入；`harness-rules.md` §四阶段边界例程 + CLAUDE.md 启动流程各加一句"顺手刷看板"；CHANGELOG。
+- **状态：** 待确认（样例 artifact 已发布验证观感）
+
+**D2 · 类型：新规律（顺带红利）**
+- **内容：** 看板默认私有、可从 artifact 页分享只读链接给非技术干系人；与自主模式天然搭——`/autodrive` 隔夜每唤醒的阶段边界顺手刷，早上打开即一夜进度；`autonomy_ledger` 可喂 token/成本 sparkline。
+- **建议写入：** `harness/autonomous-mode.md` 补一句"每唤醒阶段边界顺手 /dashboard"；`harness/dashboard/skill-dashboard.md` 已含分享说明。
+- **状态：** 待确认
