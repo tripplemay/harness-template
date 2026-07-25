@@ -48,6 +48,7 @@ mkdir -p "$TARGET_DIR/.claude"
 cp -r "$SRC_PREFIX/templates/claude/." "$TARGET_DIR/.claude/"
 chmod +x "$TARGET_DIR/.claude/hooks/"*.sh
 chmod +x "$TARGET_DIR/.claude/autonomous/"*.sh   # 自主模式校验 hook（机件 #1/#3）
+chmod +x "$TARGET_DIR/.claude/dispatch/"*.sh     # dispatch 沙箱与校验器（机件 #7 + L1/L2/L3）
 
 # 2. 状态机初始数据
 cat > "$TARGET_DIR/features.json" <<'JSON'
@@ -87,6 +88,9 @@ if [ ! -f "$TARGET_DIR/.gitignore" ]; then
 # Harness agent local identity（本机身份，不入 git）
 .agent-id
 
+# Dispatch mode 外部 CLI 沙箱 worktree 与运行日志（瞬态，不入 git）
+.harness-dispatch/
+
 # OS / editor
 .DS_Store
 *.swp
@@ -94,6 +98,7 @@ if [ ! -f "$TARGET_DIR/.gitignore" ]; then
 GITIGNORE
 else
   grep -qxF '.agent-id' "$TARGET_DIR/.gitignore" || echo ".agent-id" >> "$TARGET_DIR/.gitignore"
+  grep -qxF '.harness-dispatch/' "$TARGET_DIR/.gitignore" || echo ".harness-dispatch/" >> "$TARGET_DIR/.gitignore"
 fi
 
 # 7. 如果是 flat 布局（degit 的 template repo），把源文件规整到 framework/ 下

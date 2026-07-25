@@ -5,6 +5,62 @@
 
 ---
 
+## v1.1 — 2026-07-25（Dispatch Mode：自动调配异厂商 agent）
+
+**来源：** A2A 协议 v1.0 研究（`docs/a2a-harness-research-2026-07-25.md`，规范三页 + ADK 集成面）
++ 用户四项裁决：对端 = 异构 CLI（Codex 优先）· 交付 = 规范 + 机件模板 · 自动化边界 = 接 autodrive 可逆内环
+· 外部 CLI 放开承担 generator。
+
+**触发原因（研究结论中的关键判断）：** 慢车道缺三样——①没有派活抽象 ②没有唤醒信号 ③没有回执与超时。
+①是地基且**纯 harness 内、零协议**；②③才需协议栈且只在跨机器时值钱。故本版做①，把 A2A 的语义
+（Agent Card / Artifact 分离 / 两个中断态 / 幂等键 / required profile）借来做③的降维版，②留给未来的 a2a transport。
+**「自动调配不同 agent」这个目标本身不需要 A2A。**
+
+**变更（新增 `.claude/dispatch/`，默认安装但 inert）：**
+- `sandbox-profile.sh` —— **机件 #7 外部 CLI 沙箱契约**。红队级发现：`settings.json` 的 deny-list
+  **只约束 Claude Code 自己的工具调用**，对外部 CLI 子进程完全无效（它有自己的权限模型与 shell），
+  闸门分类器也看不见（那是阶段内部的工具调用）。工具层拦不住 → 进程层拦：env 白名单（没凭据就花不了钱）·
+  独立 worktree · 禁 push（`GIT_CONFIG_*` env 级覆盖——**绝不可用 `git remote set-url`，worktree 与主仓共享 config**）·
+  wall-clock 封顶。四道锁均已实测生效
+- `agents-registry.schema.json`（L1 descriptor，A2A Agent Card 最小子集）+ `.example.json`
+- `dispatch-envelope.schema.json`（L2）—— `additionalProperties:false` 是安全属性不是风格：
+  字段白名单使实现叙述**结构上塞不进去**，铁律 12 由模型自觉变为机械强制
+- `validate-dispatch.sh` —— registry / envelope / **assignments（family 互斥）** / receipt / hook 五合一
+- `transports/local-cli.md` + `adapters/codex.json`（首家，`_verified:false` 待实测）+ `transports/a2a.md`（接口预留，未实装）
+
+**变更（既有机件）：**
+- `verdict-artifact.schema.json` + `validate-verdict-artifact.sh` 加 `waiting: auth|adjudication|null`
+  —— **中断态降维**：一次性 CLI 进程无法「挂起等你」，故把 A2A 的 `AUTH_REQUIRED`/`INPUT_REQUIRED`
+  编码进产物而非进程状态；写完照常 exit 0，编排者读到非空即硬停
+- `gate-arbiter.workflow.js`：`build`/`verify` 加 dispatch 分支；机件 #6 去偏从**同家族换档位**升级为
+  **跨厂商 family 轮换**；dispatcher subagent 的返回 schema 结构性地不含结论字段（模型在链路上永不携带结论）
+- `harness-rules.md`：两条车道 → **三条执行形态**（快车道 / 本地异构 / 慢车道，差异只是 descriptor 的 `transport` 字段）；
+  独立性铁则新增第 5 条 **model_family 互斥**；`role_assignments` 约束修订；机制化守门表 +3 行
+- `orchestration-patterns.md` §7：外部工具参与从「读 AGENTS.md 自行接手」改为「编排者主动派活」
+- `bootstrap.sh`：`.claude/dispatch/*.sh` chmod + `.harness-dispatch/` 入 .gitignore
+
+**关键设计（三条，均来自本次实测或红队推演）：**
+1. **不信任对方守规矩，只信任产出能过 schema。** Claude 读 CLAUDE.md、Codex 读 AGENTS.md、Gemini 读 GEMINI.md
+   ——三份必然漂移且无法验证是否遵守。故契约**随信封走**（内联常量模板），产出不合 schema 就机械拒收
+2. **exit 0 ≠ 完成。** 退出码 0 但产物缺失一律判 FAILED——外部 CLI「礼貌地失败」是常态，
+   不写死这条会被当成验收通过。重派上限 1 次，绝不静默无限重跑
+3. **放开外部 generator 引入的新洞：** `{generator: builder-codex, evaluator: reviewer-codex}` 是两个不同进程、
+   各自 fresh context，**完全满足铁律 4 字面要求**，但同模型自评独立性形同虚设 → 新增 family 互斥硬校验
+
+**安全边界：** 安装 ≠ 启用（无 `.agents-registry.json` 即 inert，快车道行为一字不变）；
+外部实例 `constraints.push` 恒 false，产物由编排者校验 commit tag 归属 + spec-lock critic 稽核后才回流主仓；
+deploy/prod/spend 永留人类闸门，且**不得依赖 deny-list 拦外部进程**。
+**残余风险已明文列出**（`dispatch-mode.md` §5.1 R1-R4：HOME 凭据外溢 / 该 CLI 自身推理花费不受 harness 管控 /
+出网未限制 / 沙箱在 a2a 下失效）。
+
+**仍待建（需接真实项目）：** Codex 适配器端到端演练（argv 按当前 CLI 版本核对，清单见 local-cli.md §7）、
+`/autodrive` 耐久层四项新职责、外部 generator 回流的 tag rewrite 策略、第二家适配器、a2a transport。
+
+**兼容性：** 全部为新增或向后兼容修订。`gate-arbiter` 无 `args.registry` 时完整回退 v1.0 行为；
+历史 `.agents-registry` 纯 id 列表仍兼容读取（但无法派活给外部实例）。状态机 7 状态与既有字段未变。
+
+---
+
 ## v1.0.3 — 2026-07-13（自主开发模式 + 进度看板：默认安装）
 
 **来源：** 单工具 Claude + dynamic Workflow 工作流下两项能力落地，用户确认默认安装。

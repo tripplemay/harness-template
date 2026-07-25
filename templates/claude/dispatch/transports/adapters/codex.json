@@ -1,0 +1,18 @@
+{
+  "_comment": "dispatch-mode.md local-cli 适配器 —— Codex CLI。⚠️ argv 与 flag 需按当前 Codex CLI 版本核对后再开车（沿用 settings.autodrive.json 的同类告警惯例）；核对方法见 transports/local-cli.md §7。",
+  "name": "codex",
+  "model_family": "codex",
+  "envelope_delivery": "stdin",
+  "argv": ["codex", "exec", "--json", "--cd", "{{worktree}}"],
+  "artifact_relpath": "docs/test-reports/{{batch}}-verdict.json",
+  "env_allowlist_extra": ["CODEX_HOME", "OPENAI_API_KEY"],
+  "_env_note": "白名单只放行 Codex 自己的推理凭据 —— 它需要凭据才能启动，这是无法绕开的。关键区别在于：它拿到的仅此一项，拿不到项目的 prod DATABASE_URL、部署 token、其他厂商 key。该凭据的花费上限由厂商账户侧管控，不由 harness 管控（dispatch-mode.md §5.1 残余风险 R2）。强烈建议配 sandbox.home_dir 指向专用 CODEX_HOME。",
+  "_argv_placeholders": {
+    "{{worktree}}": "沙箱创建的独立 worktree 绝对路径",
+    "{{envelope}}": "信封文件绝对路径（envelope_delivery=argv 时用）",
+    "{{batch}}": "批次 id",
+    "{{artifact}}": "产物相对路径"
+  },
+  "_verified": false,
+  "_verified_note": "尚未在真实项目端到端演练。首次开车前按 local-cli.md §7 逐条核对，通过后把 _verified 置 true 并记录 CLI 版本。"
+}

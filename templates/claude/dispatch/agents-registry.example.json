@@ -1,0 +1,56 @@
+{
+  "_comment": "dispatch-mode.md L1 示例。拷到项目根 .agents-registry.json 后按实际改。⚠️ generator 与 evaluator 的 model_family 必须不同（validate-dispatch.sh assignments 强制）。",
+  "version": "dispatch/1",
+  "agents": [
+    {
+      "id": "main-claude",
+      "roles": ["planner", "generator"],
+      "transport": "subagent",
+      "agent_type": "generator-restricted",
+      "model_family": "claude",
+      "capabilities": ["plan", "build", "fix"],
+      "constraints": { "l2": false, "write_src": true, "push": true },
+      "notes": "本机主实例。⚠️ roles 不含 evaluator——快车道下主实例是「编排」隔离 evaluator subagent，自己并不承担该角色（铁律 4）。承担者是下面的 reviewer-claude"
+    },
+    {
+      "id": "reviewer-claude",
+      "roles": ["evaluator"],
+      "transport": "subagent",
+      "agent_type": "evaluator",
+      "model_family": "claude",
+      "capabilities": ["verify", "l1_local", "security_audit"],
+      "constraints": { "l2": false, "write_src": false, "push": true },
+      "notes": "同会话隔离验收 subagent（铁律 4 的默认实现）"
+    },
+    {
+      "id": "reviewer-codex",
+      "roles": ["evaluator"],
+      "transport": "local-cli",
+      "adapter": "codex",
+      "model_family": "codex",
+      "capabilities": ["verify", "l1_local", "code_review"],
+      "constraints": { "l2": false, "write_src": false, "push": false },
+      "sandbox": {
+        "home_dir": "~/.harness-sandbox/reviewer-codex",
+        "env_allow": []
+      },
+      "timeout_s": 2400,
+      "notes": "异构验收，去偏轮换池成员。model_family=codex 与主实例的 claude 不同，满足独立性互斥"
+    },
+    {
+      "id": "builder-codex",
+      "roles": ["generator"],
+      "transport": "local-cli",
+      "adapter": "codex",
+      "model_family": "codex",
+      "capabilities": ["build", "fix"],
+      "constraints": { "l2": false, "write_src": true, "push": false },
+      "sandbox": {
+        "home_dir": "~/.harness-sandbox/builder-codex",
+        "env_allow": []
+      },
+      "timeout_s": 3600,
+      "notes": "v1.1 放开的外部 generator。四道锁：roles 白名单 + 独立 worktree 无 push + spec-lock critic 稽核 + L1 全绿硬证据。⚠️ 与它配对的 evaluator 必须是非 codex family"
+    }
+  ]
+}

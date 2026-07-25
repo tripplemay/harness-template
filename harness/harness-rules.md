@@ -13,16 +13,22 @@
 | **Generator** | 功能实现、修复 | 主上下文；独立 feature 可并行 subagent + worktree | 独立会话 |
 | **Evaluator** | 测试设计 + 执行 + 验收 + 复验 | **上下文隔离的 evaluator subagent**（fresh context） | 独立会话 / 独立实例（含外部工具） |
 
-**两条车道：**
+**三条执行形态（v1.1）：**
 
-- **快车道（同会话，默认）：** 单个 Claude Code 会话承载整个批次。Planner / Generator 在主上下文流转，Evaluator 以隔离 subagent 运行。阶段切换 = 上下文隔离切换，不需要结束会话。
-- **慢车道（git 总线）：** 角色分布在不同会话 / 机器 / 工具上，通过 git 同步状态文件异步交接。行为与 v0.x 相同。
+| 形态 | 隔离方式 | 调度方式 | 适用 |
+|---|---|---|---|
+| **快车道（同会话，默认）** | 同会话隔离 subagent（fresh context） | 主上下文直派 | 日常批次；阶段切换 = 上下文隔离切换，不需要结束会话 |
+| **本地异构（v1.1 新增）** | 独立进程 + 独立 worktree + **异厂商模型** | Dispatcher 按 `.agents-registry.json` descriptor 派活 | 去偏验收、跨厂商调配。见 `dispatch-mode.md` |
+| **慢车道（git 总线）** | 不同会话 / 机器 / 工具 | git 同步状态文件异步交接 | 跨机器、多日大批次、真异步。行为与 v0.x 相同 |
 
-**车道选择规则（Planner 在 planning 末尾确认）：** 默认快车道。命中以下任一 → 慢车道：
+**形态选择规则（Planner 在 planning 末尾确认）：** 默认快车道。命中以下任一 → 升级形态：
 
-1. `role_assignments` 把某角色指派给了其他实例（其他机器 / 其他工具）
-2. 批次预计跨多个工作日 / 多会话（大型重构、Path A 串行多批次）
-3. 用户明确要求独立实例验收（正式发布批次建议）
+1. `role_assignments` 把某角色指派给了其他实例 → 查该实例 descriptor 的 `transport` 决定形态
+2. 批次预计跨多个工作日 / 多会话（大型重构、Path A 串行多批次）→ 慢车道
+3. 用户明确要求独立实例验收（正式发布批次建议）→ 慢车道
+4. 需要打破同模型盲区相关性（正式发布批次 / 自主无人值守）→ **本地异构**
+
+**三条形态共用同一份状态机、同一份派活信封、同一个真相源（git）**——形态差异只体现在 descriptor 的 `transport` 字段上。这使同一批次内切换形态成为配置项而非重构。
 
 两条车道下，**progress.json / features.json 在每个阶段边界都必须落盘并 commit**——快车道也不豁免。状态文件是审计轨迹和断点恢复的基础，不是慢车道专属的通信管道。
 
@@ -34,6 +40,10 @@
 2. **评估基于实物**：代码、测试运行输出、staging 实测——不得基于实现者的叙述或 commit message
 3. **结论原样落盘**：Evaluator 的 evaluator_feedback 与验收报告由 Evaluator 直接写入 progress.json / `docs/test-reports/`；主上下文（编排者）不得改写、筛选、软化任何结论
 4. **Evaluator 不修改产品代码**：只写测试产物（`tests/` / `scripts/test/`）与报告（`docs/test-cases/` / `docs/test-reports/`）
+5. **模型家族互斥（v1.1）**：generator 与 evaluator 的 `model_family` 必须不同。
+
+> 第 5 条是 v1.1 放开外部 CLI 承担 generator 后新增的洞：`{generator: "builder-codex", evaluator: "reviewer-codex"}` 是两个不同进程、各自 fresh context，**完全满足前四条的字面要求**，但同一个模型实现完又自己验收，独立性形同虚设。
+> 机制化守门：`validate-dispatch.sh assignments`（写 progress.json 时的 PostToolUse hook）+ gate-arbiter 派活当下的二次校验。
 
 ## Feature 执行者（executor）
 
@@ -75,7 +85,9 @@ git pull --ff-only origin main
 
 **然后从磁盘重新读取以下文件，不得使用任何缓存版本：**
 - `.agent-id` — 当前实例的身份标识（文件不存在则 myId = null）
-- `.agents-registry` — 项目实例注册表（Planner 角色分配时使用）
+- `.agents-registry.json` — 项目实例注册表 / descriptor（Planner 角色分配与 Dispatcher 派活时使用）。
+  格式见 `framework/templates/claude/dispatch/agents-registry.schema.json`；
+  历史的纯 id 列表格式 `.agents-registry` 仍兼容读取，但只能支撑快车道默认映射，无法派活给外部实例
 - `progress.json` — 当前阶段和进度
 - `features.json` — 功能列表和状态
 - `harness-rules.md` — 本文件自身
@@ -179,7 +191,7 @@ evaluator: Reviewer
 
 ### 第四步：阶段边界更新 progress.json
 每个阶段结束后必须更新 progress.json 中的 status 字段并 commit，再进入下一阶段或结束会话。快车道同会话流转也不得跳过。
-阶段边界可顺手 `/dashboard` 刷新图形化进度看板（Artifact 快照，URL 存 `progress.json.dashboard_url`，模板见 `framework/templates/dashboard.template.html`）。长时无人值守自主推进见 `framework/harness/autonomous-mode.md`（可选，默认不开启）。
+阶段边界可顺手 `/dashboard` 刷新图形化进度看板（Artifact 快照，URL 存 `progress.json.dashboard_url`，模板见 `framework/templates/dashboard.template.html`）。长时无人值守自主推进见 `framework/harness/autonomous-mode.md`（可选，默认不开启）；把阶段派给异厂商 agent 见 `framework/harness/dispatch-mode.md`（可选，无 `.agents-registry.json` 即 inert）。
 
 ### 第五步：会话结束时更新共享记忆（所有角色通用）
 每次会话结束前，执行以下两项：
@@ -330,8 +342,11 @@ git status --short docs/test-reports/ docs/test-cases/ .auto-memory/
 
 **约束规则：**
 - generator 和 evaluator 不得为同一执行上下文（不能自己评估自己的代码）。同一实例 id 下，generator 在主上下文、evaluator 在隔离 subagent 中运行视为满足此约束
+- **generator 与 evaluator 的 `model_family` 必须不同**（独立性铁则第 5 条；`validate-dispatch.sh assignments` 强制）
 - planner 可与任何角色重叠
-- 外部工具类实例（非 Claude Code 的 agent，如 Codex）只能被分配为 evaluator
+- **外部实例的可分配角色由 `.agents-registry.json` 中该实例的 `roles` 白名单声明**（v1.1 修订）。
+  外部 CLI 可承担 generator，但必须同时满足四道锁：`roles` 含 generator · 独立 worktree 且 `constraints.push=false` · spec-lock critic 稽核 diff · L1（lint/tsc/test）全绿。
+  > **v1.0 原文为「外部工具类实例只能被分配为 evaluator」。** v1.1 放开的前提是这四道锁都已装配——机件未装时仍按 v1.0 从严，只许 evaluator。
 - `role_assignments` 为 null 或不存在时，按默认映射执行，完全向后兼容
 - done 阶段清除 `role_assignments`
 
@@ -365,6 +380,9 @@ git status --short docs/test-reports/ docs/test-cases/ .auto-memory/
 | Evaluator 边界 | `.claude/agents/evaluator.md` subagent 定义 | 验收角色以受限工具集 + 独立 system prompt 运行 |
 | 角色入口 | `.claude/skills/`（`/plan` `/build` `/verify`） | 阶段切换有明确入口，防止无角色状态下随手改代码 |
 | commit 兜底 | `.git/hooks/pre-commit` | JSON 校验 + 字体子集等项目级检查（离线兜底） |
+| **独立性互斥**（v1.1） | `.claude/dispatch/validate-dispatch.sh` PostToolUse hook | 写 progress.json 时校验 generator/evaluator 的 `model_family` 不同、角色未越权分配（独立性铁则第 5 条） |
+| **派活信封白名单**（v1.1） | `dispatch-envelope.schema.json` + `validate-dispatch.sh envelope` | 信封字段白名单——结构上塞不进实现叙述（铁律 12 的机械强制） |
+| **外部进程沙箱**（v1.1） | `.claude/dispatch/sandbox-profile.sh` | env 白名单 / 独立 worktree / 禁 push / wall-clock 封顶。⚠️ `settings.json` 的 deny-list **对外部 CLI 子进程完全无效**，只能在进程层拦 |
 
 这是 `cowork-constraint-design.md`（2026-04-04 历史文档）想解决而当时无法解决的问题：当年结论是"约束本质上是知情自律"，现在 hooks + subagent 定义提供了真正的技术强制层。
 

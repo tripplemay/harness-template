@@ -131,10 +131,13 @@
 
 - **跨机器协作：** 多台设备轮换工作，`.agent-id` 各配身份，启动必 `git pull --ff-only`
 - **独立实例验收：** 正式发布批次 / 用户要求最强隔离时，evaluator 跑在独立会话甚至独立机器，读 status=verifying 自行接手
-- **外部工具 evaluator：** 非 Claude Code 的 agent（如 Codex）参与时只能担任 evaluator（harness-rules.md role_assignments 约束），走 AGENTS.md 指令
 - **多日大批次：** Path A 串行多批次重构，天然跨会话
 
-两条车道可以在同一批次内切换：如快车道 building 完成后，用户要求独立实例做 verifying——只要阶段边界状态已落盘，任何实例都能无损接手。这正是「状态文件在两条车道下都必须落盘」的回报。
+**外部工具参与已改走第三形态（v1.1）：** 非 Claude Code 的 agent（Codex 等）不再靠「读 AGENTS.md 自行接手」，
+而是由编排者按 `.agents-registry.json` descriptor 主动派活（`dispatch-mode.md`）——契约随信封走、产物过 schema、
+跑在进程级沙箱里。可承担 evaluator 与 generator（后者需四道锁齐备），但 `model_family` 必须与对方角色不同。
+
+三条形态可以在同一批次内切换：如快车道 building 完成后，用户要求异厂商实例做 verifying——只要阶段边界状态已落盘，任何实例都能无损接手。这正是「状态文件在所有形态下都必须落盘」的回报。
 
 ---
 

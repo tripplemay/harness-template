@@ -107,3 +107,13 @@
      看板：templates/dashboard.template.html + templates/claude/skills/dashboard/SKILL.md + progress.init.json(dashboard_url) + bootstrap chmod + harness-rules §四 + templates/CLAUDE.md。
      CHANGELOG v1.0.3。归档：archive/proposed-learnings-archive-v1.0.3.md。
      注：harness-fit 分析（P0-P2）不在本次确认范围，仍保留待确认。 -->
+
+<!-- 2026-07-25: Dispatch Mode 沉淀完成（用户确认四项裁决，默认安装但 inert）。
+     机件入 templates/claude/dispatch/{sandbox-profile.sh, agents-registry.schema.json, agents-registry.example.json,
+     dispatch-envelope.schema.json, validate-dispatch.sh, transports/{local-cli.md, a2a.md, adapters/codex.json}}；
+     harness/dispatch-mode.md 为 T2 规范。既有机件修订：verdict-artifact schema+validator 加 waiting 中断态、
+     gate-arbiter 加 dispatch 分支与 family 轮换、harness-rules 三形态+独立性铁则第5条+守门表、
+     orchestration-patterns §7、bootstrap chmod/.gitignore、templates/CLAUDE.md。CHANGELOG v1.1。
+     来源：docs/a2a-harness-research-2026-07-25.md。
+     仍待建见 dispatch-mode.md §9（Codex 适配器端到端演练 / /autodrive 耐久层四职责 / tag rewrite 策略 /
+     第二家适配器 / a2a transport）——沿用「机件没建好不许开车」，适配器核对未过不许接 autodrive。 -->
