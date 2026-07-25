@@ -40,6 +40,11 @@
 四道锁全守（凭据零泄漏 / 无 push / `src/` 未动 / 主仓零污染）。**修复后重跑终验**——
 `_verified: true` 必须是对实际发布的代码验证过。
 
+**补接一处文档与机件的不一致：** `validate-dispatch.sh` 的 family 互斥校验在 `harness-rules.md`
+守门表与 `dispatch-mode.md` §3.2 里写的是「PostToolUse hook」，但**从未接进 `templates/claude/settings.json`**
+——那道守门此前只能手动跑。这正是框架自己警告的「写在文件里的规则 vs 装进工具链的规则」差距。
+现已接入并实测：违规分配退出码 2（Claude 当场看到报错）、无关文件放行、未装 dispatch 的项目完全 inert。
+
 **未做：** Gemini 适配器（本机未装 gemini CLI，未实测的适配器不写进模板）；
 Kimi 的执行 shell 未观测到（`stream-json` 事件不暴露），按最坏情况处理即专用空 HOME 照样必填；
 `waiting` 路径同 Codex 仍未经真实 CLI 触发。
