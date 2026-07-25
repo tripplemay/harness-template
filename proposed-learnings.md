@@ -126,3 +126,15 @@
      附带修：适配器显式传厂商沙箱参数防 config 削弱；$VAR 紧跟 CJK 全角字符导致 bash unbound（4 处 → ${VAR}）。
      CHANGELOG v1.1.1。未做：Gemini 适配器（本机未装，未实测不入模板）、waiting 路径真实触发、
      /autodrive 全循环自主演练、a2a transport。 -->
+
+<!-- 2026-07-25: a2a transport 实装（v1.2，用户确认 C 档）。新增 transports/a2a-runner.py（长驻 A2A
+     服务端：JSON-RPC + SSE + 落盘 task store + 幂等 + Last-Event-ID 重放 + 重启孤儿清理）、
+     transports/a2a-client.py（hub client）、dispatch-run.sh（统一入口，按 transport 路由）；
+     gate-arbiter 判据改 !== 'subagent' → 引擎 transport 无关；/autodrive 步骤 0 增 runner 存活断言。
+     认知修正：R4「沙箱在 a2a 下失效」对自建 runner 不成立——runner 在本机调 sandbox-profile.sh，
+     四道锁完整；R4 仅适用于不受控的第三方对端。
+     实测修掉的协议瑕疵：SSE 以 state 为收流判据会漏发终态事件（直播缺、重放有）→ 改用独立
+     events_complete 标志 + 收流前最后排空。
+     演练 10 项全通，含真实 Codex 经 a2a 198s 长任务 SSE 全程保活。CHANGELOG v1.2。
+     刻意不做：gRPC/REST 绑定、扩展协商、签名 Card、push webhook、OAuth/mTLS（子集实现，非一致性认证）。
+     未做：真实跨机器演练（loopback 已验证网络路径与鉴权）。 -->

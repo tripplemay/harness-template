@@ -24,6 +24,8 @@ description: 自主开发心跳的单次唤醒入口——把 progress.json.stat
    - `bash .claude/dispatch/validate-dispatch.sh assignments` 退出 0（**generator/evaluator 的 model_family 必须不同**）
    - 每个被 `role_assignments` 引用的 `local-cli` descriptor，其 `adapter` 的 `_verified` 为 `true`
      （未实测核对的适配器不许接自主——沿用「机件没建好不许开车」）
+   - 每个被引用的 `a2a` descriptor：`curl -sf <endpoint>/health` 通，且 `auth.env` 指定的
+     环境变量已设置。**runner 不在 = 无人值守期间派活必然全数 FAILED**，宁可开车前就停
 
 > 机制没装齐，护栏就是纸面——宁可不开车。
 

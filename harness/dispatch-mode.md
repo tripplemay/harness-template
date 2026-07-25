@@ -24,10 +24,11 @@
 |---|---|---|
 | `subagent` | 同会话隔离 subagent | 快车道（默认） |
 | `local-cli` | 独立进程 + 独立 worktree + 异厂商模型 | **本地异构（本模式主体）** |
-| `a2a` | 远程 A2A server | 慢车道跨机器（**接口预留，未实装**，见 `transports/a2a.md`） |
+| `a2a` | 自建 runner（长驻 HTTP 服务） | **真异步 / taskId 重订阅 / SSE 推送 / 跨机器**（已实装，见 `transports/a2a.md`） |
 
-**这条形态提供的是模型异构，不是地理异构。** 时序上它更接近快车道的 subagent（编排者拉子进程等回执），
-只是换了进程和厂商。真正的「慢」——跨机器、真异步、断线重订阅——仍属慢车道。
+`local-cli` 提供**模型异构**（阻塞子进程，会话在任务在）；`a2a` 在其上再加**时间与空间解耦**
+（派完可关会话、凭 taskId 重订阅、跨机器）。两者共用同一份信封、回执表与状态机，
+差异被 `dispatch-run.sh` 吸收——**引擎侧完全不感知 transport**。
 
 ## 2. 一句话架构
 
@@ -118,6 +119,9 @@ A2A 的 `INPUT_REQUIRED` / `AUTH_REQUIRED` 依赖「服务端挂起等你」，�
 | **机件 #7 沙箱** | 四道锁；deny-list 在进程层的替代 | `sandbox-profile.sh` | 已装 ✅ 实测通过 |
 | **回执推断器** | exit code + 产物 + waiting → 6 态 | `validate-dispatch.sh receipt` | 已装 ✅ 实测通过 |
 | **适配器** | 各家 CLI 的 argv / 投递方式 / 产物约定 | `transports/adapters/*.json` | Codex ✅ 已实测（0.145.0）；Gemini 未写 |
+| **统一派活入口** | 按 transport 路由，对上层隐藏差异 | `dispatch-run.sh` | 已装 ✅ 实测通过 |
+| **a2a runner** | 把一次性 CLI 包成长驻 A2A 服务端 | `transports/a2a-runner.py` | 已装 ✅ 实测通过 |
+| **a2a client** | 编排者侧 hub client（SSE / 轮询 / 幂等） | `transports/a2a-client.py` | 已装 ✅ 实测通过 |
 | **dispatcher subagent** | 跑三条机械命令取回执；**无评估权** | gate-arbiter `dispatchExternal()` | 已接线 |
 | **family 轮换** | 跨厂商去偏（机件 #6 升级） | gate-arbiter `resolveEvaluators()` | 已接线 |
 
@@ -161,7 +165,9 @@ A2A 的 `INPUT_REQUIRED` / `AUTH_REQUIRED` 依赖「服务端挂起等你」，�
 - **R2 — 该 CLI 自身推理凭据的花费不受 harness 管控。** 它拿到的仅此一项（拿不到项目的生产与部署凭据），
   但这笔钱的上限在厂商账户侧，`autonomy-policy.json` 的 budget 管不到。**未解决，设计上接受。**
 - **R3 — 出网未限制。** macOS 上做进程级网络隔离成本过高，当前依赖「无凭据」而非「无网络」。**未解决。**
-- **R4 — 沙箱在 `a2a` transport 下整体失效**：跨机器时沙箱责任转移到对端，需要契约层声明与验证手段。
+- ~~**R4 — 沙箱在 `a2a` 下整体失效**~~ **对自建 runner 不成立**：runner 在自己所在机器调本地
+  `sandbox-profile.sh`，四道锁一条不少。R4 仅适用于**我们不控制的第三方对端**——
+  接非自建对端前必须人工确认其机件在位（Agent Card 的 `x-harness.sandboxed` 是声明，不是证明）。
 - **R5 — `env_set` 指向真实 `CODEX_HOME` 时，子进程对该目录有写权限**（会话库、config）。
   以 `--ephemeral` 缓解（不落会话文件）；彻底隔离需为沙箱复制一份独立的认证目录。
 
@@ -227,7 +233,9 @@ tag 归属校验（`feat(<batch>-F<num>):` 必须映射 features.json 真实条�
 | `/autodrive` 耐久层四职责 | ✅ **已接线** | 步骤 0 断言 / 步骤 1 注入 / 步骤 6a 收割与去偏比对 / 6a-3 回流 |
 | 外部 generator 回流的 tag 策略 | ✅ **已定：拒收不重写** | 重写 = 未经取证的归属判定，且掩盖 scope 漂移信号（`/autodrive` §6a-3 注） |
 | 第二家适配器（Gemini） | ⬜ 未做 | 本机未安装 gemini CLI，**无法实测核对**；未实测的适配器不写进模板（避免 `_verified:false` 的机件被误用）。轮换池当前 claude × codex 两个 family，去偏机制已可用 |
-| `a2a` transport | ⬜ 未实装（设计如此） | 需为每家写 runner shim + 有真实对端；接口形状已锁定于 `transports/a2a.md` |
+| `a2a` transport | ✅ **已实装**（2026-07-25） | 自建 runner + client + SSE + task store；真实 Codex 经 a2a 演练通过（198s，SSE 全程保活）|
+| a2a 真实跨机器演练 | ⬜ 未做 | 全部在 loopback 完成；网络路径与 Bearer 鉴权已验证，未在两台物理机之间跑过 |
+| a2a 协议完整性 | ⬜ 刻意不做 | 只做 JSON-RPC 绑定；无 gRPC/REST、无扩展协商、无签名 Card、无 OAuth/mTLS、无 push webhook |
 | 端到端**自主**演练（`/autodrive` 全循环带外部派活） | ⬜ 未做 | 单步派活已验证；多轮唤醒 + 闸门 + 回流的整链需接真实项目 |
 
 ## 10. 建造顺序（机制化先于自动化）
@@ -239,7 +247,8 @@ tag 归属校验（`feat(<batch>-F<num>):` 必须映射 features.json 真实条�
 5. **接 gate-arbiter**（dispatch 分支 + family 轮换）✅
 6. 适配器实测核对 → 置 `_verified: true` ✅（Codex）
 7. `/autodrive` 耐久层四项职责 ✅
-8. 先在 evaluator 单点放开，跑稳后再放开 generator ⬜ ← **当前位置**
+8. `a2a` transport（真异步 / 重订阅 / SSE）✅
+9. 先在 evaluator 单点放开，跑稳后再放开 generator ⬜ ← **当前位置**
 
 ## 11. 与现有机制的关系
 
@@ -253,8 +262,9 @@ tag 归属校验（`feat(<batch>-F<num>):` 必须映射 features.json 真实条�
 > - `agents-registry.schema.json` + `agents-registry.example.json` — L1
 > - `dispatch-envelope.schema.json` — L2
 > - `validate-dispatch.sh` — registry / envelope / assignments / receipt / hook 五合一校验器
+> - `dispatch-run.sh` — 统一派活入口，按 transport 路由
 > - `transports/local-cli.md` + `transports/adapters/codex.json` — 首家适配器
-> - `transports/a2a.md` — 接口预留，未实装
+> - `transports/a2a.md` + `a2a-runner.py` + `a2a-client.py` — a2a transport（已实装）
 >
 > 另修改：`verdict-artifact.schema.json`（+`waiting`）、`gate-arbiter.workflow.js`（dispatch 分支）、
 > `harness-rules.md`（三形态 / 独立性铁则第 5 条 / 角色约束修订 / 守门表）。
@@ -266,4 +276,5 @@ tag 归属校验（`feat(<batch>-F<num>):` 必须映射 features.json 真实条�
 | 日期 | 修订 | 来源 |
 |---|---|---|
 | 2026-07-25 | 初版（v1.1）：四层设计 / 机件 #7 沙箱 / 回执推断 / waiting 中断态 / family 互斥 / 外部 generator 放开 / gate-arbiter 接线 | A2A 协议研究（`docs/a2a-harness-research-2026-07-25.md`）+ 用户四项裁决 |
+| 2026-07-25 | v1.2：`a2a` transport 实装（自建 runner + client + SSE + 落盘 task store + 幂等 + 断线重放）；`dispatch-run.sh` 统一入口使引擎 transport 无关；R4 对自建 runner 不成立 | 真实 Codex 经 a2a 演练（198s） |
 | 2026-07-25 | v1.1.1：Codex 适配器实测转正；**发现登录 shell 经 .zshenv/.zprofile 还原被剥离变量 → `sandbox.home_dir` 升为硬性前置**（R1 关闭）；新增 `sandbox.env_set`；`/autodrive` 四职责接线；tag 策略定为拒收不重写 | codex-cli 0.145.0 端到端演练 |

@@ -5,6 +5,57 @@
 
 ---
 
+## v1.2 — 2026-07-25（a2a transport 实装：真异步 / taskId 重订阅 / SSE 推送）
+
+**来源：** 用户确认做到 C 档（loopback 异步 + 局域网跨机 + SSE 推送）。
+
+**一处认知修正（影响可行性判断）：** v1.1 写「今天现成的对端 ≈ ADK 系」是站在「找别人现成的
+A2A server」角度。实际上 shim 只能自己写，而**自己写意味着两端都由我们控制**——由此推出
+`dispatch-mode.md` 的 **R4「沙箱在 a2a 下整体失效」对自建 runner 不成立**：runner 跑在哪台机器，
+就在哪台机器调本地 `sandbox-profile.sh`，机件 #7 四道锁一条不少。R4 仅适用于我们不控制的第三方对端。
+
+**新增：**
+- `transports/a2a-runner.py` —— 把一次性 CLI 包成长驻 A2A 服务端（Python 3 stdlib，零依赖）。
+  JSON-RPC：`SendMessage` / `GetTask` / `ListTasks` / `CancelTask` / `SubscribeToTask`(SSE)；
+  Agent Card 由 descriptor 生成；**task store 落盘**（taskId 重订阅只有持久化才是真的）；
+  事件 jsonl 带单调 seq，支持 `Last-Event-ID` 断线重放；重启时孤儿 `WORKING` 标 FAILED 而非永远挂着
+- `transports/a2a-client.py` —— 编排者侧 hub client。`run`/`send`/`subscribe`/`get`/`cancel`/`card`/`ls`
+- `dispatch-run.sh` —— **统一派活入口**，按 `descriptor.transport` 路由。两条路径输出同形 run-meta，
+  于是回执推断表、gate-arbiter、`/autodrive` 一行都不用改
+
+**修改：**
+- `gate-arbiter.workflow.js`：判据从 `transport === 'local-cli'` 改为 `!== 'subagent'`，
+  dispatcher subagent 改调 `dispatch-run.sh` → **引擎侧完全不感知 transport**
+- `/autodrive` 步骤 0 增 a2a 断言：`<endpoint>/health` 通 + token 环境变量已设。
+  runner 不在 = 无人值守期间派活必然全数 FAILED，宁可开车前就停
+- `bootstrap.sh` chmod `transports/*.py`
+
+**三条安全设计：**
+1. **鉴权 fail-closed** —— `HARNESS_A2A_TOKEN` 未设时只允许绑 loopback；绑 `0.0.0.0` 无 token 拒绝启动
+2. **远端自述只是参考，权威判定在本地** —— runner 的 state 写进 run-meta 的 `remote_state_advisory`
+   仅供取证；客户端把产物写到本地后由调用方对**本地副本**重跑 `validate-dispatch.sh receipt`。
+   跨机器场景下这是唯一诚实的做法
+3. **产物必须内联回传** —— 跨机器时客户端读不到 runner 的文件系统。这是 a2a 与 local-cli 唯一的
+   实质差异，也是 A2A 把 Artifact 设计成消息负载而非路径的原因
+
+**一个实测修掉的协议瑕疵：** 执行侧「先写终态记录、再发事件」，若 SSE 以 `state` 为收流判据，
+会在最后一个 status 事件写盘前就发 `done`——**直播订阅者永远收不到终态事件**（重放才看得到）。
+改为以独立的 `events_complete` 标志收流，并在收流前做最后一次排空。
+
+**演练（10 项全通）：** 绑 0.0.0.0 无 token 拒启 · 无/错 token 401 · `send` 0.08s 非阻塞（对端任务 4s）·
+同 task_id 幂等去重 · 跨会话凭 taskId 取结果 · SSE 四事件实时 · `--resume-from 0` 完整重放 ·
+CancelTask · runner 重启后任务存活且孤儿标 FAILED · **真实 Codex 经 a2a 198s 长任务
+SSE 全程保活、产物落本地、本地判定 COMPLETED**（再次独立命中植入的缺陷）。
+
+**刻意不做（写进 `transports/a2a.md` §7，避免日后误以为能对接任意第三方）：**
+gRPC/REST 绑定、扩展协商、签名 Agent Card 验真、push webhook、OAuth/mTLS。
+**产物是「A2A 形状的子集」，不是通过一致性认证的 A2A 实现。**
+
+**未做：** 真实跨机器演练（全部在 loopback 完成，网络路径与 Bearer 鉴权已验证，
+但未在两台物理机之间跑过）。
+
+---
+
 ## v1.1.1 — 2026-07-25（Dispatch Mode 待建项收口：Codex 适配器实测转正 + 沙箱加固）
 
 **来源：** 本机 codex-cli 0.145.0 端到端演练（`local-cli.md` §7.1 核对记录）。

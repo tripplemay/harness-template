@@ -141,7 +141,8 @@ const RECEIPT_SCHEMA = {
   },
 }
 
-// 派一个外部 CLI（transport=local-cli）。dispatcher subagent 只跑三条机械命令，无评估权。
+// 派一个外部 agent（transport=local-cli 或 a2a）。dispatcher subagent 只跑三条机械命令，无评估权。
+// transport 差异由 dispatch-run.sh 吸收，引擎侧完全不感知。
 async function dispatchExternal(d, { batch, role, ref, spec, features, l2, fixRound, wakeN }) {
   // 幂等键：确定性（Workflow 内无 Date/Math.random），且每次唤醒唯一
   const taskId = `${batch}-${role}-w${wakeN}-r${fixRound}`
@@ -160,7 +161,7 @@ async function dispatchExternal(d, { batch, role, ref, spec, features, l2, fixRo
     + `1. 把以下 JSON 原样写入 .harness-dispatch/envelope-${taskId}.json（一个字节都不要改）：\n`
     + `${JSON.stringify(envelope)}\n`
     + `2. bash .claude/dispatch/validate-dispatch.sh envelope .harness-dispatch/envelope-${taskId}.json\n`
-    + `3. bash .claude/dispatch/sandbox-profile.sh --agent ${d.id} --envelope .harness-dispatch/envelope-${taskId}.json\n`
+    + `3. bash .claude/dispatch/dispatch-run.sh --agent ${d.id} --envelope .harness-dispatch/envelope-${taskId}.json\n`    + `   （该入口按 descriptor.transport 自动路由：local-cli 走本机沙箱，a2a 走远端 runner + SSE 订阅）\n`
     + `4. bash .claude/dispatch/validate-dispatch.sh receipt <上一步 run-meta 路径>\n`
     + `返回 receipt 的 state 与两个路径。role=evaluator 时另用 python3 从产物机械统计 verdict_summary`
     + `（all_pass 与三个计数）。**除此之外不要读取、引用或转述产物内容**——结论由耐久层逐字读文件回写。`,
@@ -218,7 +219,7 @@ if (action === 'plan') {
   } else {
     const t = pending[0]
     // v1.1：generator 可解析到外部 CLI（transport=local-cli）。无注册表 / 无外部 generator ⇒ 走原路径。
-    const extGen = eligible(registry, 'generator').find(a => a.transport === 'local-cli')
+    const extGen = eligible(registry, 'generator').find(a => a.transport !== 'subagent')
     let extWorktree = null
 
     if (extGen) {
@@ -276,7 +277,7 @@ if (action === 'plan') {
   const evals = resolveEvaluators(registry, w, genFamily)   // 已排除与 generator 同 family 者
   const sampled = feats.length ? feats[w % feats.length] : null
 
-  if (evals && evals.primary.transport === 'local-cli') {
+  if (evals && evals.primary.transport !== 'subagent') {
     // ── 外部 evaluator：引擎只拿回执与机械投影，不碰结论 ──
     const r = await dispatchExternal(evals.primary, {
       batch: state.current_sprint, role: 'evaluator', ref: state.head_sha,

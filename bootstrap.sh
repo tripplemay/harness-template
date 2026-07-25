@@ -49,6 +49,7 @@ cp -r "$SRC_PREFIX/templates/claude/." "$TARGET_DIR/.claude/"
 chmod +x "$TARGET_DIR/.claude/hooks/"*.sh
 chmod +x "$TARGET_DIR/.claude/autonomous/"*.sh   # 自主模式校验 hook（机件 #1/#3）
 chmod +x "$TARGET_DIR/.claude/dispatch/"*.sh     # dispatch 沙箱与校验器（机件 #7 + L1/L2/L3）
+chmod +x "$TARGET_DIR/.claude/dispatch/transports/"*.py  # a2a runner / client
 
 # 2. 状态机初始数据
 cat > "$TARGET_DIR/features.json" <<'JSON'
