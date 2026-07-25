@@ -150,3 +150,12 @@
      安全姿态记录：Kimi prompt 模式隐式全批准且拒绝一切权限旗标（--auto/--yolo 均 Cannot combine），
      厂商侧零约束——不像 Codex 还有 -s workspace-write 兜底，机件 #7 是唯一防线。
      CHANGELOG v1.2.1。 -->
+
+<!-- 2026-07-25: Console Mode（v1.3）。控制台 = 观测面 + 人闸门，不是编排者（hub 形态与 git 单一真相源
+     不可动）；传输用 git，不依赖 GitHub API。地基是新增 progress.json.pending_gate ——
+     此前闸门只有散文（session_notes）与事后记录（autonomy.last_halt），没有可回写的决策槽位。
+     🔴 decision 只有人类/控制台可写，agent 侧由 validate-pending-gate.sh guard 在内容层机械拦截
+     （工具层拦不住，因为 progress.json 必须允许 agent 写 status）。陈旧批准由 gate_id 匹配防护。
+     修两个缺陷：默认端口 8787 与本机 node 服务冲突改 41300；guard 里 heredoc 覆盖管道 stdin
+     导致 HEAD 恒空、合法批准被误判为本地新增（只在合法路径暴露）→ 改临时文件传参。
+     未实装：P3 日志上报（含凭据片段落盘的责任）、P4 云端调度（需 runner 反转为出站连接穿 NAT）。 -->

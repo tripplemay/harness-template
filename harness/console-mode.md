@@ -1,0 +1,143 @@
+# Console Mode —— 自托管多项目控制台（观测面 + 人闸门）
+
+> **状态：P1/P2 已实装。** 服务在 `console/`（自托管，不随 bootstrap 铺进项目）；
+> 项目侧机件在 `.claude/console/`（闸门契约 + 校验器 + 人类批准 CLI，随 bootstrap 铺入）。
+> **P3（agent 实时日志上报）/ P4（云端跨机调度）已设计未实装**，见 §7。
+>
+> **加载层级：T2（按需）。** 仅在部署/运维控制台时加载。
+>
+> **来源：** 用户三项裁决——数据边界=全量日志（自托管前提下）· 部署=自托管小服务 · 优先级=人闸门优先。
+
+---
+
+## 1. 一条决定形态的红线：控制台不是编排者
+
+harness 是 **hub 形态、状态机唯一持有者、git 是唯一真相源**。
+`dispatch-mode.md` L4 与 `orchestration-patterns.md` §8 都钉死「引擎永不自己按阶段推进键」。
+控制台若变成 hub，就会撞上 A2A 研究里那句判断——「点对点委托无全局工作流概念，
+链式转委托无人持有全局真相、崩了无法对账」。
+
+> **控制台 = 观测面 + 人闸门 UI + （P4）注册中心。编排者仍在某台机器上，git 仍是真相源。**
+> 云端改配置不是「下发指令」，而是**生成一个人类签名的 commit**，机器侧 pull 到才生效。
+
+这与 `/dashboard` 一脉相承——它已经写着「看板是只读镜像，不是真相源」。
+控制台是它的多项目、可交互版本，不是另起炉灶。
+
+## 2. 传输就是 git
+
+控制台在自己所在机器维护各项目的**本地克隆**，定时 `git pull` 读状态；批准时写
+`pending_gate.decision` 并 `commit + push`。
+
+**不依赖 GitHub API**（任何 remote 都能用），**不引入第二个真相源**，
+且和其他所有参与方（编排者、a2a runner、外部 CLI）用的是同一条总线。
+
+## 3. 闸门契约（P2 的地基）
+
+在此之前闸门只以散文记在 `session_notes`，`autonomy.last_halt` 只是**事后记录**——
+没有「人类回写批准、机器再消费」的槽位，控制台既无从展示也无从批准。故新增 `progress.json.pending_gate`：
+
+```jsonc
+{ "pending_gate": {
+    "id": "BL-042-verifying-done-w7",     // 幂等键；decision 必须引用它
+    "kind": "phase_advance",              // l2_auth / adjudication / debias_conflict / scope_drift / budget / spec_lock
+    "raised_at": "...", "raised_by": "autodriver",
+    "batch": "BL-042", "from_status": "verifying", "to_status": "done",
+    "detail": "全 acceptance PASS + L1 绿 + signoff 已写，等人类批准跨 Class B 闸门",
+    "evidence": ["docs/test-reports/BL-042-verdict.json"],   // 只放路径，不内联正文
+    "decision": null } }
+```
+
+| 谁写 | 写什么 |
+|---|---|
+| 机器（autodrive / verify / build） | 举起闸门；消费完把整个 `pending_gate` 置 `null` |
+| **只有人类 / 控制台** | `decision` |
+
+### 3.1 🔴 为什么 `decision` 必须机械守门
+
+它是「人类批准」在 git 里的**唯一表示**。agent 若能写它，「阶段推进键归人」「L2 需授权」
+就全部退化成自觉——写一条 approve 即可跨过任何闸门。
+
+工具层拦不住（`progress.json` 必须允许 agent 写 status），所以在**内容层**拦：
+`validate-pending-gate.sh guard` 比对工作区与 HEAD，`decision` 若是本地新增/修改即拒。
+
+**两条合法路径：**
+- 人类跑 `approve-gate.sh`（走 Bash，不触发 PostToolUse hook）→ 写入并立即 commit
+- 控制台提交 → 机器侧 `git pull` → decision 随 HEAD 到达 → guard 放行
+
+**被拒的：** agent 用 Write/Edit 直接写 decision · 举新闸门时顺手带 decision · 篡改已有 decision（如把 `once` 改成永久）。
+**允许的：** 消费完批准后清空整个 `pending_gate`（正常收尾，不是盖章）。
+
+**陈旧批准防护：** `decision.gate_id` 必须等于 `pending_gate.id`——一张批准只对它自己那个闸门有效。
+
+> **若用户让 agent 代为批准：** 拒绝，并请用户自己用 `!` 前缀执行
+> `! bash .claude/console/approve-gate.sh --approve --by <你>`。
+> 「人闸门归人」的意思就是这一步不能由 agent 完成，无论谁要求。
+
+## 4. 组件
+
+| 组件 | 位置 | 随 bootstrap 铺入 | 状态 |
+|---|---|---|---|
+| 闸门 schema | `.claude/console/pending-gate.schema.json` | ✅ | 已装 |
+| 闸门校验器（schema/guard/hook） | `.claude/console/validate-pending-gate.sh` | ✅ | 已装 ✅ 实测 |
+| 人类批准 CLI | `.claude/console/approve-gate.sh` | ✅ | 已装 ✅ 实测 |
+| PostToolUse 接线 | `.claude/settings.json` | ✅ | 已接 |
+| 控制台服务 | `console/server.py` + `ui.html` | ❌ 自托管，单独部署 | 已装 ✅ 实测 |
+
+## 5. 部署
+
+```bash
+# 在 VPS 上：把各项目克隆到一处
+git clone <repo> /srv/repos/kolmatrix
+cp console/console.config.example.json console/console.config.json   # 填 projects
+
+export HARNESS_CONSOLE_TOKEN=<token>          # 绑非 loopback 时必需，否则拒绝启动
+python3 console/server.py --config console/console.config.json --host 0.0.0.0 --port 41300
+```
+
+访问 `http://<host>:41300/?token=<token>`。**建议放在反代 + TLS 之后**——当前只有 Bearer，无 TLS 终结。
+
+**控制台需要各项目的 push 权限**（写 decision）。它是**唯一持有该凭据的组件**——
+机器上的 agent 没有控制台凭据，控制台也没有 agent 的执行能力。这个分离本身就是护栏。
+
+## 6. 安全模型
+
+| 面 | 处置 |
+|---|---|
+| 绑定 | 非 loopback 必须有 token，否则拒启（fail-closed，同 a2a-runner） |
+| 取证读取 | 只允许仓库内 `docs/` 下的文件，路径穿越与 `docs/` 外文件一律拒；>512KB 拒 |
+| 写权限 | 控制台**只写 `pending_gate.decision` 一个字段**，不碰 status / features / policy |
+| 归属 | 每条 decision 带 `by` + `at`，并落成一个独立 commit（`chore(gate): ...`），审计轨迹在 git 里 |
+| 越权批准 | 提交前跑项目自己的 `validate-pending-gate.sh schema`；不通过则回滚，不绕过项目守门 |
+| 并发 | 批准前先 `git pull --ff-only`；闸门 id 不匹配或已有 decision 一律拒（409） |
+
+**🔴 P3 开启后的额外义务：** 全量日志上报会把命令输出、代码片段、**报错正文里的凭据片段**
+持久化到控制台所在机器。那台机器从此必须按「持有密钥的系统」对待：磁盘加密、访问控制、
+明确的日志留存期。这是选择「全量日志 + 自托管」这一组合时接受的代价——
+自托管让数据不出自己的边界，但边界内的这台机器责任变重了。
+
+## 7. 未实装（设计已定）
+
+- **P3 agent 实时日志上报：** a2a-runner 已有事件流（jsonl + 单调 seq + SSE）。
+  缺 `--report-to <console>` 出站上报。**默认关闭**，开启前先读 §6 最后一段。
+- **P4 云端跨机调度：** 需要机器注册 + 心跳 + 任务路由，以及一个**架构反转**——
+  runner 现在是 server（要求云端能连它），而真实跨机器时机器多在 NAT 后。
+  现实做法是把 runner 改成主动连云端拉任务；`taskId` / 幂等 / 事件序号语义可整套保留。
+  另需 per-machine 凭据（现在是共享 Bearer），以及**派活前断言目标机器机件在位**——
+  Agent Card 的 `x-harness.sandboxed` 是声明不是证明，跨机器需要更硬的东西（如机件文件哈希）。
+- 多操作员与权限分级（现在是单 token 单 operator）
+- TLS 终结（现在依赖外部反代）
+
+## 8. 红线
+
+1. 控制台不得写 `status` / `features` / `autonomy-policy.json`——推进键仍在机器侧
+2. 控制台是只读镜像，渲染出错不影响状态机；真相永远在 `progress.json` / `features.json`
+3. `pending_gate.decision` 只有人类/控制台可写，agent 侧机械拒绝（§3.1）
+4. 沙箱（机件 #7）永远在执行机器上生效；控制台不执行任何批次工作
+
+---
+
+## 版本历史
+
+| 日期 | 修订 | 来源 |
+|---|---|---|
+| 2026-07-25 | 初版（v1.3）：闸门契约 `pending_gate` + 自我盖章 guard + 人类批准 CLI + 自托管控制台（观测面 + 人闸门 UI） | 用户三项裁决；P3/P4 设计已定未实装 |

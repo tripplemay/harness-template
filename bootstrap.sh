@@ -50,6 +50,7 @@ chmod +x "$TARGET_DIR/.claude/hooks/"*.sh
 chmod +x "$TARGET_DIR/.claude/autonomous/"*.sh   # 自主模式校验 hook（机件 #1/#3）
 chmod +x "$TARGET_DIR/.claude/dispatch/"*.sh     # dispatch 沙箱与校验器（机件 #7 + L1/L2/L3）
 chmod +x "$TARGET_DIR/.claude/dispatch/transports/"*.py  # a2a runner / client
+chmod +x "$TARGET_DIR/.claude/console/"*.sh      # 闸门契约校验器 + 人类批准 CLI（console-mode.md）
 
 # 2. 状态机初始数据
 cat > "$TARGET_DIR/features.json" <<'JSON'
@@ -111,6 +112,8 @@ if [ "$LAYOUT" = "flat" ]; then
   mv "$TARGET_DIR/templates"     "$TARGET_DIR/framework/"
   [ -d "$TARGET_DIR/patterns" ] && mv "$TARGET_DIR/patterns" "$TARGET_DIR/framework/"
   [ -d "$TARGET_DIR/archive" ] && mv "$TARGET_DIR/archive" "$TARGET_DIR/framework/"
+  # console/ 是**自托管服务**（console-mode.md），不随项目走——归入 framework/ 供单独部署
+  [ -d "$TARGET_DIR/console" ] && mv "$TARGET_DIR/console" "$TARGET_DIR/framework/"
   # framework 自身文档（docs/0*.md）随源归整，避免与项目 docs/ 混淆
   if ls "$TARGET_DIR"/docs/0*.md >/dev/null 2>&1; then
     mkdir -p "$TARGET_DIR/framework/docs"

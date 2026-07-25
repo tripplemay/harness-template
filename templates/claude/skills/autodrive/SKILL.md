@@ -45,6 +45,16 @@ description: 自主开发心跳的单次唤醒入口——把 progress.json.stat
 - 读 `progress.json.wake_in_progress`：若存在且未超时（`started_at` 在 stale 窗口内）→ 说明上一唤醒仍在跑，**本次立即返回，不重排**（避免双跑抢 push）
 - 否则写入 `wake_in_progress = {wake_id, started_at: now}`，commit
 
+## 步骤 2.5 —— 消费闸门批准（console-mode.md）
+- 读 `progress.json.pending_gate`：
+  - 无 → 继续
+  - 有且 `decision` 为空 → **本轮不推进**（仍在等人），释放 lock、不重排、STOP
+  - 有且 `decision.action = "reject"` → 记账后清空闸门 → 硬停交用户
+  - 有且 `decision.action = "approve"` 且 `decision.gate_id == pending_gate.id` →
+    **执行该闸门对应的迁移**（如 `to_status`），然后把 `pending_gate` 置 `null`
+- ⚠️ 本层**只读 decision，绝不写它**。写入即被 `validate-pending-gate.sh guard` 拒绝——
+  那是「人闸门归人」的机械保证（console-mode.md §3.1）
+
 ## 步骤 3 —— IDEMPOTENCY（崩溃前跳）
 - 若 status 隐含的步已反映在状态里（如"下一 pending feature"实际已 completed，说明上次 execute 后、writeback 前崩溃）→ 前跳，不重做该步
 
@@ -59,10 +69,18 @@ description: 自主开发心跳的单次唤醒入口——把 progress.json.stat
 ## 步骤 5 —— 按 decision 处置
 | decision | 含义 | 动作 |
 |---|---|---|
-| `HALT` | governor/critic/未知态触发 | 记 halt 原因入 session_notes → 释放 lock → **PushNotification 通知用户** → `ScheduleWakeup(stop:true)` → STOP |
+| `HALT` | governor/critic/未知态触发 | **举起 `pending_gate`**（见下）→ 记 halt 原因入 session_notes → 释放 lock → **PushNotification 通知用户** → `ScheduleWakeup(stop:true)` → STOP |
 | `DONE_PENDING_USER` | 批次跑完，→done 是 Class B | 同上（批次完成通知），**不自动置 done**，等用户确认 |
 | `HANDBACK` | Class B 需授权但 policy 未授权 | 同上，交用户确认跨闸门 |
 | `ADVANCE` | Class A 可逆，或 Class B 且 policy.auto_cross 含 B | 进步骤 6 |
+
+**举闸门（HALT / DONE_PENDING_USER / HANDBACK 三种都要做）：** 写
+`progress.json.pending_gate = {id: "<batch>-<from>-<to>-w<wake_n>", kind, raised_at: now,
+raised_by: "autodriver", batch, from_status, to_status, detail: <halt 原因原文>,
+evidence: [verdict 工件路径等], decision: null}`。
+`kind` 按 halt 原因映射：`batch_complete`→`phase_advance` · L2 未授权→`l2_auth` ·
+`debias_conflict`/`scope_drift`/`budget_breach:*`/`spec_lock_required` 同名。
+**没有 pending_gate，控制台就看不见这次停机，人也无从远程批准**——通知只是提醒，闸门才是接口。
 
 ## 步骤 6 —— WRITEBACK（机械原样，§8 + 铁律 12）
 

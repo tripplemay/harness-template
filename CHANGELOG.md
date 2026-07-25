@@ -5,6 +5,55 @@
 
 ---
 
+## v1.3 — 2026-07-25（Console Mode：自托管多项目控制台 + 闸门契约）
+
+**来源：** 用户三项裁决——数据边界=全量日志（自托管前提）· 部署=自托管小服务 · 优先级=人闸门优先。
+
+**一条决定形态的红线：控制台不是编排者。** harness 是 hub 形态、状态机唯一持有者、git 是唯一真相源；
+控制台若成为 hub 就会撞上「点对点委托无全局工作流概念，链式转委托无人持有全局真相」。
+故：**控制台 = 观测面 + 人闸门 UI；编排者仍在机器上；改配置不是下发指令，而是生成一个人类签名的 commit。**
+传输就是 git —— 控制台维护各项目本地克隆，不依赖 GitHub API，不引入第二个真相源。
+
+**🔴 先补的地基：闸门此前没有机器可读的表示。** `session_notes` 是散文，`autonomy.last_halt` 只是
+事后记录——**没有「人类回写批准、机器再消费」的槽位**，控制台既无从展示也无从批准。
+新增 `progress.json.pending_gate`（`.claude/console/pending-gate.schema.json`）。
+
+**核心安全属性 —— `decision` 只有人类/控制台可写：** 它是「人类批准」在 git 里的唯一表示。
+agent 若能写，「阶段推进键归人」「L2 需授权」就全部退化成自觉。工具层拦不住
+（progress.json 必须允许 agent 写 status），故在**内容层**拦：`validate-pending-gate.sh guard`
+比对工作区与 HEAD，`decision` 若是本地新增/修改即拒。
+合法路径两条：人类跑 `approve-gate.sh`（走 Bash 不触发 hook，写完即 commit）；
+控制台提交后机器 `git pull`，decision 随 HEAD 到达即放行。
+另有**陈旧批准防护**：`decision.gate_id` 必须等于 `pending_gate.id`。
+
+**新增（随 bootstrap 铺入 `.claude/console/`）：** `pending-gate.schema.json` ·
+`validate-pending-gate.sh`（schema/guard/hook）· `approve-gate.sh`（人类批准 CLI）；
+接入 `settings.json` PostToolUse。
+
+**新增（`console/`，自托管服务，不随项目走，bootstrap 归入 `framework/console/`）：**
+`server.py`（Python3 stdlib 零依赖）+ `ui.html`（自包含，无 CDN）+ 配置示例。
+只写 `pending_gate.decision` 一个字段，不碰 status/features/policy。
+
+**`/autodrive` 接线：** 新增步骤 2.5「消费闸门批准」（只读 decision，绝不写）；
+HALT/DONE_PENDING_USER/HANDBACK 三种处置都要**举起 pending_gate**——
+没有它控制台就看不见这次停机，通知只是提醒，闸门才是接口。
+
+**实测：** 闸门契约 9 项（自我盖章拒 / 篡改授权边界拒 / 陈旧 gate_id 拒 / 合法批准通 /
+消费清空通 / 重复批准拒 …）；控制台端到端（两个假项目 + bare remote）——
+状态读取、取证读取、路径穿越拒、docs 外文件拒、批准 commit+push、
+**机器侧从 remote 克隆后 guard 放行**（整条链路的接缝）。
+
+**修：** 默认端口 8787 与本机既有服务冲突 → 改 41300（与 a2a runner 41241 同族）；
+guard 里 `printf | python3 - <<'PY'` 的 **heredoc 覆盖管道 stdin**，导致 HEAD 恒读成空、
+合法批准被误判为本地新增（只在合法路径上暴露）→ 改临时文件传参。
+
+**未实装（设计已定，见 `console-mode.md` §7）：** P3 agent 实时日志上报
+（runner 已有事件流，缺 `--report-to`；⚠️ 开启后控制台机器将持久化含凭据片段的日志正文，
+须按「持有密钥的系统」对待）；P4 云端跨机调度（需 runner 由 server 反转为出站长连接穿 NAT、
+机器注册心跳、per-machine 凭据、派活前断言对端机件在位）。
+
+---
+
 ## v1.2.1 — 2026-07-25（Kimi CLI 适配器接入 + 沙箱两项能力补齐 + 修一个自引入缺陷）
 
 **来源：** 用户要求增加对 Kimi CLI 的支持；本机 kimi-code 0.26.0 实测。
