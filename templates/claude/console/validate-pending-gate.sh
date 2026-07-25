@@ -21,6 +21,10 @@
 #   · agent 举新闸门时顺手带上 decision → 拒
 #   · agent 篡改已有 decision（如把 once 改成永久）→ 拒
 # 允许：agent 消费完批准后把整个 pending_gate 置 null（这是正常收尾，不是盖章）
+#
+# 两种模式（各自 fail-closed）：
+#   ① 无 console.pub → 比对工作区与 HEAD（git 传输路径）
+#   ② 有 console.pub → 验 Ed25519 签名（推荐；支持 device agent 中继，控制台不需要 git 写权限）
 
 set -euo pipefail
 MODE="${1:-hook}"
@@ -73,7 +77,7 @@ if d is not None:
     if not isinstance(d, dict):
         errs.append("decision 必须为对象或 null")
     else:
-        dextra = set(d) - {"gate_id","action","by","at","note","scope"}
+        dextra = set(d) - {"gate_id","action","by","at","note","scope","sig"}
         if dextra: errs.append(f"decision 含白名单外字段 {sorted(dextra)}")
         for k in ("gate_id","action","by","at"):
             if not d.get(k): errs.append(f"decision 缺必填字段 {k}")
@@ -95,8 +99,52 @@ PY
   ;;
 
 guard)
+  # ── 模式 ②：配了公钥 → 验签（推荐）──────────────────────────────────────
+  # 签名把「谁批准的」从**传输路径**转移到**内容本身**：控制台持私钥，写代码的 agent
+  # 读得到公钥却伪造不了签名。于是「本地写入」不再可疑，
+  # 「控制台签名 → device agent 中继 → 本机落盘」这条通道才成立（不需要 git push 权限）。
+  PUB="$(dirname "${BASH_SOURCE[0]}")/console.pub"
+  if [ -f "$PUB" ]; then
+    command -v openssl >/dev/null 2>&1 || { echo "[gate] ⛔ 配了 console.pub 但无 openssl，无法验签"; exit 2; }
+    PAY="$(mktemp)"; SIG="$(mktemp)"; trap 'rm -f "$PAY" "$SIG"' EXIT
+    RC=$(python3 - "$PROG" "$PAY" "$SIG" <<'PY'
+import base64, json, sys
+prog_path, pay_path, sig_path = sys.argv[1:4]
+try: prog = json.load(open(prog_path))
+except Exception as e: print(f"ERR progress.json 非法：{e}"); sys.exit(0)
+g = prog.get("pending_gate")
+if not isinstance(g, dict): print("SKIP 闸门已清空"); sys.exit(0)
+d = g.get("decision")
+if d is None: print("SKIP 尚无决策"); sys.exit(0)
+sig = d.get("sig")
+if not sig:
+    print("ERR decision 缺 sig —— 本仓库已配 console.pub，未签名的决策一律拒收"); sys.exit(0)
+# 规范化载荷 = decision 里**除 sig 外的全部字段**，键排序 + 紧凑分隔符 + UTF-8。
+# ⚠️ 必须签全字段，不能只签 {action,at,by,gate_id}：否则 scope 这类未签字段可被 agent 篡改
+# （把 once:true 改成永久授权）而签名依然有效——实测踩到过。
+payload = json.dumps({k: v for k, v in d.items() if k != "sig"},
+                     sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
+open(pay_path, "wb").write(payload)
+try: open(sig_path, "wb").write(base64.b64decode(sig, validate=True))
+except Exception as e: print(f"ERR sig 不是合法 base64：{e}"); sys.exit(0)
+print("VERIFY")
+PY
+)
+    case "$RC" in
+      SKIP*) echo "[gate] ✓ guard（验签模式）：${RC#SKIP }"; exit 0 ;;
+      ERR*)  echo "[gate] ⛔ guard（验签模式）：${RC#ERR }"; exit 2 ;;
+    esac
+    if openssl pkeyutl -verify -pubin -inkey "$PUB" -rawin -in "$PAY" -sigfile "$SIG" >/dev/null 2>&1; then
+      echo "[gate] ✓ guard（验签模式）：decision 签名有效（控制台签发）"; exit 0
+    fi
+    echo "[gate] ⛔ guard（验签模式）：**签名无效** —— 该 decision 不是控制台签发的。"
+    echo "   载荷被篡改，或有人试图伪造批准。人闸门必须由控制台或持私钥的人类签发。"
+    exit 2
+  fi
+
+  # ── 模式 ①：无公钥 → 比对工作区与 HEAD（git 传输路径）────────────────────
   if ! git rev-parse --git-dir >/dev/null 2>&1; then
-    echo "[gate] ⚠️ 非 git 仓库，跳过 guard（decision 来源无法验证）"; exit 0
+    echo "[gate] ⚠️ 非 git 仓库且未配 console.pub，跳过 guard（decision 来源无法验证）"; exit 0
   fi
   # ⚠️ HEAD 内容必须走临时文件传参，不能用管道：`python3 - <<'PY'` 的 heredoc 会占据 stdin，
   #    管道内容读不到，head 恒为空 → 任何 decision 都被误判成「本地新增」而拒绝合法批准。

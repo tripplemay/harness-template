@@ -69,6 +69,35 @@ harness 是 **hub 形态、状态机唯一持有者、git 是唯一真相源**�
 
 **陈旧批准防护：** `decision.gate_id` 必须等于 `pending_gate.id`——一张批准只对它自己那个闸门有效。
 
+### 3.2 验签模式（推荐；中继通道的前提）
+
+上面的「比对 HEAD」把信任放在**传输路径**上（decision 必须经 git 到达）。这条路要求
+控制台持有各项目的 push 权限，且无法支持「控制台 → device agent → 本机落盘」这种中继。
+
+配了 `.claude/console/console.pub` 后切换到**验签模式**：信任转移到**内容本身**。
+
+```
+控制台服务端持 Ed25519 私钥（环境变量注入，绝不入仓库）
+   sign(canonical(decision 除 sig 外的全部字段))
+        ↓ 经已认证的 device 通道下发
+device agent 把 decision + sig 写进本机 progress.json
+        ↓
+validate-pending-gate.sh guard 用仓库里的 console.pub 验签
+```
+
+写代码的 agent 读得到公钥、**伪造不了签名**，于是「本地写入」不再可疑——
+中继通道由此成立，且控制台不再需要任何项目的 git 写权限。
+
+**🔴 必须签全字段。** 载荷 = `decision` 里除 `sig` 外的**全部**字段（键排序、紧凑分隔符、UTF-8）。
+只签 `{action, at, by, gate_id}` 会留下缺口：`scope` 未被签名，agent 可以把
+`once: true` 改成永久授权而签名依然有效——**实测踩到过**。
+
+**跨语言一致性已验证：** Node（tokenizer 服务端）与 openssl（校验器）对同一载荷产生
+**逐字节相同**的签名（Ed25519 是确定性签名），互相可验。
+
+密钥生成：`bash .claude/console/gen-console-key.sh <outdir>`。
+两种模式各自 fail-closed：配了公钥 → 无签名/签名无效一律拒；未配公钥 → 回退比对 HEAD。
+
 > **若用户让 agent 代为批准：** 拒绝，并请用户自己用 `!` 前缀执行
 > `! bash .claude/console/approve-gate.sh --approve --by <你>`。
 > 「人闸门归人」的意思就是这一步不能由 agent 完成，无论谁要求。
