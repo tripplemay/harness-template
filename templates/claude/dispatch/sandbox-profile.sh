@@ -97,7 +97,18 @@ def emit(k, v): print(f"{k}={shlex.quote(str(v))}")
 emit("D_ADAPTER", adapter_name)
 emit("D_FAMILY", d.get("model_family", ""))
 emit("D_TIMEOUT", d.get("timeout_s", 3600))
-emit("D_HOME", sb.get("home_dir", ""))
+# home_dir 必须展开 ~ 并绝对化。相对/未展开的 HOME 有两层危害（实测踩到）：
+# ① 子进程把 HOME 当相对路径 → 在 CWD 下造出字面量 `~/` 垃圾目录；
+# ② 下面的 dotfile fail-closed 断言会去检查一个**不存在的相对路径**，
+#    于是静默通过、等于没检查 —— L1 的护栏被悄悄削掉。
+_home = sb.get("home_dir", "")
+if _home:
+    # 判据必须在展开**之前**：abspath 会把相对路径也变成绝对路径，放在之后等于没判。
+    # 拒相对路径的理由：它会静默地相对「编排者恰好所处的 CWD」解析，结果不确定。
+    if not (_home.startswith("/") or _home.startswith("~")):
+        fail(f"sandbox.home_dir 必须以 / 或 ~ 开头（当前 {_home!r}）—— 相对路径会随 CWD 漂移")
+    _home = os.path.abspath(os.path.expanduser(_home))
+emit("D_HOME", _home)
 emit("D_ENVELOPE_DELIVERY", ad.get("envelope_delivery", "stdin"))
 emit("E_BATCH", batch)
 emit("E_TASK_ID", task_id)
@@ -131,6 +142,9 @@ git worktree add --detach "$WT" "$REF" >/dev/null 2>&1 \
   || die "worktree 创建失败（ref=${REF}）"
 echo "[sandbox] worktree: $WT @ ${REF:0:12}" >&2
 
+ENVELOPE_ABS="$(cd "$(dirname "$ENVELOPE")" && pwd)/$(basename "$ENVELOPE")"
+ENVELOPE_JSON="$(cat "$ENVELOPE_ABS")"
+
 # ── 3. env 白名单（构造子进程环境；未列出的一律不传）────────────────────────
 # 关键：这是「没凭据就花不了钱」那一招。prod DATABASE_URL / 各家 API key /
 # AWS_* / VERCEL_TOKEN 等一律不进白名单 → 子进程拿不到 → 结构上无法触达生产与计费。
@@ -152,6 +166,7 @@ ENV_ARGS+=("GIT_CONFIG_COUNT=1" "GIT_CONFIG_KEY_0=remote.origin.pushurl" \
 [ -n "$D_HOME" ] || die "$AGENT_ID 未配 sandbox.home_dir —— 子进程会继承真实 HOME，
    其 .zshenv/.zprofile 中的 export 将绕过 env 白名单还原敏感变量（dispatch-mode.md §5.1 L1）。
    请配置专用 HOME，并用 sandbox.env_set 投喂该 CLI 的认证目录（如 CODEX_HOME）。"
+case "$D_HOME" in /*) ;; *) die "sandbox.home_dir 必须是绝对路径或 ~ 开头（当前解析为 ${D_HOME}）" ;; esac
 mkdir -p "$D_HOME"
 # 专用 HOME 里若混入 shell 初始化文件，同一个洞照样重开 —— fail-closed
 for dotf in .zshenv .zprofile .zlogin .bashrc .bash_profile .profile .envrc; do
@@ -159,14 +174,17 @@ for dotf in .zshenv .zprofile .zlogin .bashrc .bash_profile .profile .envrc; do
 done
 ENV_ARGS+=("HOME=$D_HOME")
 echo "[sandbox] 专用 HOME: ${D_HOME}（已确认无 shell 初始化文件）" >&2
-ENV_ARGS+=("HARNESS_ENVELOPE=$(cd "$(dirname "$ENVELOPE")" && pwd)/$(basename "$ENVELOPE")")
+ENV_ARGS+=("HARNESS_ENVELOPE=$ENVELOPE_ABS")
 ENV_ARGS+=("HARNESS_ARTIFACT=$E_ARTIFACT" "HARNESS_BATCH=$E_BATCH" "HARNESS_TASK_ID=$E_TASK_ID")
 
 # ── 4. 渲染 argv 模板 ──────────────────────────────────────────────────────
 ARGV=()
 for tok in "${D_ARGV_TEMPLATE[@]}"; do
   tok="${tok//\{\{worktree\}\}/$WT}"
-  tok="${tok//\{\{envelope\}\}/$ENVELOPE}"
+  tok="${tok//\{\{envelope\}\}/$ENVELOPE_ABS}"
+  # {{envelope_json}}：内联信封**内容**（不是路径），供只接受 `-p <text>` 的 CLI（如 Kimi）。
+  # 作为单个 argv 元素直接 exec，无 shell 解释；信封 ~1KB，远低于 ARG_MAX。
+  tok="${tok//\{\{envelope_json\}\}/$ENVELOPE_JSON}"
   tok="${tok//\{\{batch\}\}/$E_BATCH}"
   tok="${tok//\{\{artifact\}\}/$E_ARTIFACT}"
   ARGV+=("$tok")
@@ -190,15 +208,17 @@ run_with_timeout() {
   fi
 }
 
-LOG="$WORKROOT/run-${E_TASK_ID}.log"
+LOG="$(cd "$WORKROOT" && pwd)/run-${E_TASK_ID}.log"
 START=$(date +%s)
 set +e
+# 子进程一律在 worktree 内启动（子 shell cd，不影响本脚本）。
+# 不依赖各家 CLI 的 --cd/-C 是否存在、是否被遵守；Kimi 无此类参数，完全靠这条。
 # 封顶对两种投递方式都必须生效——重定向套在 timeout 之外，stdin 透传给子进程，不影响封顶。
 if [ "$D_ENVELOPE_DELIVERY" = "stdin" ]; then
-  run_with_timeout "$D_TIMEOUT" env -i "${ENV_ARGS[@]}" "${ARGV[@]}" < "$ENVELOPE" > "$LOG" 2>&1
+  ( cd "$WT" && run_with_timeout "$D_TIMEOUT" env -i "${ENV_ARGS[@]}" "${ARGV[@]}" < "$ENVELOPE_ABS" > "$LOG" 2>&1 )
 else
-  # argv / file 投递：信封路径已渲染进 argv，或经 HARNESS_ENVELOPE env 传入
-  run_with_timeout "$D_TIMEOUT" env -i "${ENV_ARGS[@]}" "${ARGV[@]}" < /dev/null > "$LOG" 2>&1
+  # argv 投递：信封路径或内容已渲染进 argv，另有 HARNESS_ENVELOPE env 兜底
+  ( cd "$WT" && run_with_timeout "$D_TIMEOUT" env -i "${ENV_ARGS[@]}" "${ARGV[@]}" < /dev/null > "$LOG" 2>&1 )
 fi
 EXIT=$?
 set -e

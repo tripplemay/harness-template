@@ -5,6 +5,47 @@
 
 ---
 
+## v1.2.1 — 2026-07-25（Kimi CLI 适配器接入 + 沙箱两项能力补齐 + 修一个自引入缺陷）
+
+**来源：** 用户要求增加对 Kimi CLI 的支持；本机 kimi-code 0.26.0 实测。
+
+**适配器转正：** `adapters/kimi.json`（`_verified: true`）——
+`kimi -p {{envelope_json}} --output-format stream-json`。
+去偏轮换池由此凑齐 **claude × codex × kimi 三个 model_family**。
+
+**沙箱两项能力补齐（都是 Kimi 逼出来的，对所有适配器通用）：**
+- `{{envelope_json}}` 内联投递 —— Kimi 的 prompt 走 argv 字面文本、不读 stdin，
+  故新增「把信封**内容**（而非路径）渲染进 argv」的占位符
+- **子进程 CWD 固定为 worktree** —— Kimi **没有 `-C`/`--cd` 工作根参数**，只能靠这条约束它。
+  同时这是对所有 CLI 的纵深防御：不再依赖各家是否有工作根参数、是否真的遵守
+
+**🔴 修一个 v1.1.1 自引入的缺陷：`sandbox.home_dir` 未做 `~` 展开**（只有 `env_set` 做了）。
+此前测试都用绝对路径所以没暴露，**而写进示例注册表的正是 `~/...` 形式**。后果两层：
+1. 子进程把 `HOME` 当相对路径 → 在 CWD 下造出字面量 `~/` 垃圾目录
+   （实测中被 CWD 锁定挡在一次性 worktree 内，没碰到主仓——反过来印证了该加固的价值）
+2. **更要命：** dotfile 的 fail-closed 断言会去检查一个不存在的相对路径 → **静默通过**，
+   等于 L1「专用空 HOME」这道护栏被悄悄削掉
+
+修法：展开 `~` 并绝对化；且「必须以 `/` 或 `~` 开头」的判据放在展开**之前**——
+`abspath` 会把相对路径也变成绝对路径，判据放在之后等于没判（第一版就踩了这个，已纠正）。
+
+**安全姿态记录（写进 `local-cli.md` §7.2）：** Codex 有 `-s workspace-write` 这一厂商自带的
+沙箱级别作为第二道防线，显式传参还能覆盖用户 config 的削弱；**Kimi 在非交互模式下没有任何
+可配的权限层**——`--auto` 与 `--yolo` 均报 `Cannot combine --prompt with ...`，而 `-p` 单独运行
+**已隐式自动批准工具使用**（实测无旗标即创建文件、跑命令）。派 Kimi 时机件 #7 的进程级四道锁
+加 CWD 锁定是**唯一防线，没有兜底**。
+
+**演练：** 同一植入缺陷场景（`slugify` 未剥离首尾连字符），Kimi 自写测试、运行、判 `PARTIAL`，
+证据不仅给出实际值 `-hi-` vs 期望 `hi`，还定位到 `src/slugify.js:3` 并解释成因。169s，
+四道锁全守（凭据零泄漏 / 无 push / `src/` 未动 / 主仓零污染）。**修复后重跑终验**——
+`_verified: true` 必须是对实际发布的代码验证过。
+
+**未做：** Gemini 适配器（本机未装 gemini CLI，未实测的适配器不写进模板）；
+Kimi 的执行 shell 未观测到（`stream-json` 事件不暴露），按最坏情况处理即专用空 HOME 照样必填；
+`waiting` 路径同 Codex 仍未经真实 CLI 触发。
+
+---
+
 ## v1.2 — 2026-07-25（a2a transport 实装：真异步 / taskId 重订阅 / SSE 推送）
 
 **来源：** 用户确认做到 C 档（loopback 异步 + 局域网跨机 + SSE 推送）。

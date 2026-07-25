@@ -118,7 +118,7 @@ A2A 的 `INPUT_REQUIRED` / `AUTH_REQUIRED` 依赖「服务端挂起等你」，�
 | **互斥校验器** | 独立性铁则第 5 条 | `validate-dispatch.sh assignments`（PostToolUse hook） | 已装 |
 | **机件 #7 沙箱** | 四道锁；deny-list 在进程层的替代 | `sandbox-profile.sh` | 已装 ✅ 实测通过 |
 | **回执推断器** | exit code + 产物 + waiting → 6 态 | `validate-dispatch.sh receipt` | 已装 ✅ 实测通过 |
-| **适配器** | 各家 CLI 的 argv / 投递方式 / 产物约定 | `transports/adapters/*.json` | Codex ✅ 已实测（0.145.0）；Gemini 未写 |
+| **适配器** | 各家 CLI 的 argv / 投递方式 / 产物约定 | `transports/adapters/*.json` | Codex ✅ 0.145.0 · Kimi ✅ 0.26.0；Gemini 未写 |
 | **统一派活入口** | 按 transport 路由，对上层隐藏差异 | `dispatch-run.sh` | 已装 ✅ 实测通过 |
 | **a2a runner** | 把一次性 CLI 包成长驻 A2A 服务端 | `transports/a2a-runner.py` | 已装 ✅ 实测通过 |
 | **a2a client** | 编排者侧 hub client（SSE / 轮询 / 幂等） | `transports/a2a-client.py` | 已装 ✅ 实测通过 |
@@ -232,7 +232,7 @@ tag 归属校验（`feat(<batch>-F<num>):` 必须映射 features.json 真实条�
 | Codex 适配器端到端演练 | ✅ **已完成**（2026-07-25, codex-cli 0.145.0） | 见 `local-cli.md` §7 核对记录；`_verified: true` |
 | `/autodrive` 耐久层四职责 | ✅ **已接线** | 步骤 0 断言 / 步骤 1 注入 / 步骤 6a 收割与去偏比对 / 6a-3 回流 |
 | 外部 generator 回流的 tag 策略 | ✅ **已定：拒收不重写** | 重写 = 未经取证的归属判定，且掩盖 scope 漂移信号（`/autodrive` §6a-3 注） |
-| 第二家适配器（Gemini） | ⬜ 未做 | 本机未安装 gemini CLI，**无法实测核对**；未实测的适配器不写进模板（避免 `_verified:false` 的机件被误用）。轮换池当前 claude × codex 两个 family，去偏机制已可用 |
+| 第二家适配器 | ✅ **Kimi 已转正**（0.26.0） | 轮换池 claude × codex × kimi 三个 family。Gemini 因本机未装而暂缺——未实测的适配器不写进模板 |
 | `a2a` transport | ✅ **已实装**（2026-07-25） | 自建 runner + client + SSE + task store；真实 Codex 经 a2a 演练通过（198s，SSE 全程保活）|
 | a2a 真实跨机器演练 | ⬜ 未做 | 全部在 loopback 完成；网络路径与 Bearer 鉴权已验证，未在两台物理机之间跑过 |
 | a2a 协议完整性 | ⬜ 刻意不做 | 只做 JSON-RPC 绑定；无 gRPC/REST、无扩展协商、无签名 Card、无 OAuth/mTLS、无 push webhook |

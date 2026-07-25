@@ -1,10 +1,10 @@
 # Transport: local-cli —— 本地异构 CLI 适配规范
 
-> 编排者把一个阶段的活派给**本机另一个厂商的 CLI 子进程**（Codex / Gemini / …），
+> 编排者把一个阶段的活派给**本机另一个厂商的 CLI 子进程**（Codex / Kimi / …），
 > 在机件 #7 沙箱内执行，凭产物取回结论。规范主文见 `harness/dispatch-mode.md`。
 >
 > **定位：** 这条 transport 提供的是**模型异构**，不是**地理异构**。跨机器、真异步、断线重订阅
-> 属于 `transports/a2a.md`（接口预留，未实装）。
+> 属于 `transports/a2a.md`（已实装）——两者共用同一份信封与回执表，由 `dispatch-run.sh` 路由。
 
 ---
 
@@ -31,7 +31,7 @@
 | 值 | 做法 | 适用 |
 |---|---|---|
 | `stdin` | 信封 JSON 从标准输入喂给 CLI | 支持读 stdin 当 prompt 的 CLI（Codex 默认） |
-| `argv` | 信封路径渲染进 argv 的 `{{envelope}}` 占位 | 只接受 `-p <file>` 类参数的 CLI |
+| `argv` | 信封**路径**渲染进 `{{envelope}}`，或信封**内容**渲染进 `{{envelope_json}}` | 只接受 `-p <text>` / `-f <file>` 类参数、不读 stdin 的 CLI（Kimi 走 `{{envelope_json}}`） |
 | `env` | 仅靠 `HARNESS_ENVELOPE` 环境变量传路径 | CLI 有自己的 prompt 组装逻辑时 |
 
 三种方式下 `HARNESS_ENVELOPE` / `HARNESS_ARTIFACT` / `HARNESS_BATCH` / `HARNESS_TASK_ID`
@@ -82,10 +82,15 @@
 | 禁 push | `GIT_CONFIG_*` env 级覆盖 `remote.origin.pushurl` | 直接改 main |
 | wall-clock 封顶 | `timeout -k 10 <timeout_s>` | 跑飞挂死 |
 
-🔴 **`sandbox.home_dir` 是必填，不是可选加固。** 外部 CLI 普遍用**登录 shell** 执行命令
+🔴 **子进程 CWD 一律固定为 worktree。** 不依赖各家 CLI 的 `--cd`/`-C` 是否存在、是否被遵守——
+Kimi **根本没有工作根参数**，完全靠这条约束在 worktree 内活动。（实测价值：Kimi 曾因 HOME 未展开
+而在 CWD 下造出字面量 `~/` 垃圾目录，正是 CWD 锁定把它挡在了一次性 worktree 里，没碰到主仓。）
+
+🔴 **`sandbox.home_dir` 必填，且必须以 `/` 或 `~` 开头。** 外部 CLI 普遍用**登录 shell** 执行命令
 （Codex 用 `/bin/zsh -lc`），它会 source `~/.zshenv` / `~/.zprofile`——其中任何 `export`
 都会把 `env -i` 剥掉的变量原样还回子进程，静默击穿第一道锁。认证改用 `sandbox.env_set`
-精确投喂（如 `CODEX_HOME=~/.codex`），不放行整个真实 HOME。
+精确投喂（如 `CODEX_HOME=~/.codex`、`KIMI_CODE_HOME=~/.kimi-code`），不放行整个真实 HOME。
+相对路径会被拒——它随编排者 CWD 漂移，且会让 dotfile 断言检查到一个不存在的路径而**静默通过**。
 
 ⚠️ **禁 push 绝不能用 `git remote set-url`** —— worktree 与主仓共享 `.git/config`，
 那样会把主仓的 push 地址一起改掉。必须用 env 级 config 覆盖（只影响子进程，不落盘）。
@@ -134,8 +139,28 @@
 四道锁全部守住（凭据零泄漏、主仓零改动、`src/` 未被动、无 push 尝试）。
 —— 这条演练同时验证了它**不是橡皮图章**：全 PASS 的结果无法区分「真验了」与「没验」。
 
-### 7.2 未纳入模板的适配器
+### 7.2 Kimi 核对记录（kimi-code 0.26.0 · 2026-07-25 · 通过）
+
+| # | 结论 |
+|---|---|
+| 1 | `kimi -p <envelope_json> --output-format stream-json` ✅。prompt 走 **argv 字面文本**（不读 stdin）→ 用 `{{envelope_json}}` 内联 |
+| 2 | ✅ 数据目录由 `KIMI_CODE_HOME` 决定（回落 `~/.kimi-code`）；`sandbox.env_set` 投喂即可 |
+| 3 | ⚠️ 未观测到（`stream-json` 事件未暴露执行 shell）。按最坏情况处理：专用空 HOME 照样必填 |
+| 4 | 🔴 **prompt 模式拒绝一切权限旗标**——`--auto` 与 `--yolo` 均报 `Cannot combine --prompt with ...`；而 `-p` 单独运行**已隐式自动批准工具使用**（实测无旗标即创建文件、跑命令）。**厂商侧零约束** |
+| 5 | ✅ `-p` 全自动，未观察到 TTY 阻塞 |
+| 6 | ✅ 按信封 `deliverable.artifact` 写到 `docs/test-reports/<batch>-verdict.json` |
+| 7 | ⚠️ **未覆盖** —— 同 Codex，演练为 L1-only 场景 |
+| 附 | 🔴 **无 `-C`/`--cd` 工作根参数** → 依赖沙箱的 CWD 锁定 |
+
+**安全姿态与 Codex 的差异（重要）：** Codex 有 `-s workspace-write` 这一厂商自带的沙箱级别作为第二道防线，
+显式传参还能覆盖用户 config 的削弱；**Kimi 在非交互模式下没有任何可配的权限层**。
+因此派 Kimi 时，机件 #7 的进程级四道锁 + CWD 锁定是**唯一防线**，没有兜底。
+
+**演练结论：** 同一植入缺陷场景（`slugify` 未剥离首尾连字符），Kimi 自写测试、运行、判 `PARTIAL`，
+证据不仅给出实际值 `-hi-` vs 期望 `hi`，还定位到 `src/slugify.js:3` 并解释了成因。169s，四道锁全守。
+
+### 7.3 未纳入模板的适配器
 
 未在本机实测核对的适配器**不写进模板**——一个 `_verified: false` 的机件被误用，
 比没有这个机件更危险。Gemini 适配器因本机未安装 gemini CLI 而暂缺；
-去偏轮换池当前为 `claude` × `codex` 两个 family，机制已可用。
+去偏轮换池当前为 `claude` × `codex` × `kimi` 三个 family。

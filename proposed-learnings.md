@@ -138,3 +138,15 @@
      演练 10 项全通，含真实 Codex 经 a2a 198s 长任务 SSE 全程保活。CHANGELOG v1.2。
      刻意不做：gRPC/REST 绑定、扩展协商、签名 Card、push webhook、OAuth/mTLS（子集实现，非一致性认证）。
      未做：真实跨机器演练（loopback 已验证网络路径与鉴权）。 -->
+
+<!-- 2026-07-25: Kimi CLI 适配器接入（v1.2.1）。kimi-code 0.26.0 端到端演练通过并转正
+     （_verified:true），轮换池凑齐 claude × codex × kimi 三个 family。
+     两处沙箱能力补齐（Kimi 逼出来的）：{{envelope_json}} 内联投递（Kimi prompt 走 argv 不读 stdin）、
+     子进程 CWD 固定为 worktree（Kimi 无 -C/--cd 工作根参数）。
+     🔴 修掉一个自引入缺陷：sandbox.home_dir 未做 ~ 展开（只有 env_set 做了），后果两层——
+     子进程把 HOME 当相对路径在 CWD 下造字面量 `~/` 垃圾目录；更要命的是 dotfile fail-closed 断言
+     会去检查一个不存在的相对路径而静默通过，等于 L1 护栏被悄悄削掉。修：展开+绝对化，
+     且「必须以 / 或 ~ 开头」的判据放在展开**之前**（abspath 会把相对路径也变绝对，放之后等于没判）。
+     安全姿态记录：Kimi prompt 模式隐式全批准且拒绝一切权限旗标（--auto/--yolo 均 Cannot combine），
+     厂商侧零约束——不像 Codex 还有 -s workspace-write 兜底，机件 #7 是唯一防线。
+     CHANGELOG v1.2.1。 -->
