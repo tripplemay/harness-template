@@ -117,7 +117,7 @@ A2A 的 `INPUT_REQUIRED` / `AUTH_REQUIRED` 依赖「服务端挂起等你」，�
 | **互斥校验器** | 独立性铁则第 5 条 | `validate-dispatch.sh assignments`（PostToolUse hook） | 已装 |
 | **机件 #7 沙箱** | 四道锁；deny-list 在进程层的替代 | `sandbox-profile.sh` | 已装 ✅ 实测通过 |
 | **回执推断器** | exit code + 产物 + waiting → 6 态 | `validate-dispatch.sh receipt` | 已装 ✅ 实测通过 |
-| **适配器** | 各家 CLI 的 argv / 投递方式 / 产物约定 | `transports/adapters/*.json` | Codex 已写，**未端到端演练** |
+| **适配器** | 各家 CLI 的 argv / 投递方式 / 产物约定 | `transports/adapters/*.json` | Codex ✅ 已实测（0.145.0）；Gemini 未写 |
 | **dispatcher subagent** | 跑三条机械命令取回执；**无评估权** | gate-arbiter `dispatchExternal()` | 已接线 |
 | **family 轮换** | 跨厂商去偏（机件 #6 升级） | gate-arbiter `resolveEvaluators()` | 已接线 |
 
@@ -131,27 +131,39 @@ A2A 的 `INPUT_REQUIRED` / `AUTH_REQUIRED` 依赖「服务端挂起等你」，�
 > 可以 `git push`、可以 `prisma migrate deploy`、可以调花钱 API。**现有机件一条都拦不住**，
 > 闸门分类器更看不见（那是阶段内部的工具调用）。
 
-工具层拦不住，就在**进程层**拦。四道锁（`sandbox-profile.sh`）：
+工具层拦不住，就在**进程层**拦。四道锁（`sandbox-profile.sh`），全部经真实 Codex 进程实测：
 
-| 锁 | 实现 | 拦住 | 实测 |
+| 锁 | 实现 | 拦住 | 实测（codex-cli 0.145.0） |
 |---|---|---|---|
-| env 白名单 | `env -i` + descriptor 显式列名 | prod 凭据 / 部署 token / 他家 key | ✅ 子进程看不到 `SECRET_TOKEN` / `DATABASE_URL` |
-| 独立 worktree | `git worktree add --detach <sha>` | 污染工作区、并行互踩 | ✅ |
-| 禁 push | `GIT_CONFIG_*` env 级覆盖 `remote.origin.pushurl` | 直接改 main | ✅ push 被拒 |
-| wall-clock 封顶 | `timeout -k 10 <timeout_s>` | 跑飞挂死 | ✅ |
+| **L1 env 白名单** | `env -i` + descriptor 显式列名 **+ 专用空 HOME（硬性前置）** | prod 凭据 / 部署 token / 他家 key | ✅ 日志中 `SECRET_TOKEN` / `DATABASE_URL` 零出现 |
+| **L2 独立 worktree** | `git worktree add --detach <sha>` | 污染工作区、并行互踩 | ✅ 主仓零改动，产物只落 worktree |
+| **L3 禁 push** | `GIT_CONFIG_*` env 级覆盖 `remote.origin.pushurl` | 直接改 main | ✅ 9 条子进程命令中无 push |
+| **L4 wall-clock 封顶** | `timeout -k 10 <timeout_s>`（无 GNU timeout 时 bash watchdog） | 跑飞挂死 | ✅ 267s 正常收敛 |
 
-⚠️ **禁 push 绝不能用 `git remote set-url`** —— worktree 与主仓共享 `.git/config`，
-那样会把主仓的 push 地址一起改掉。必须用 env 级 config 覆盖（只影响子进程，不落盘）。
+**三个实现陷阱（都是实测踩出来的，不是推演）：**
 
-**残余风险（诚实列明，未解决）：**
+1. 🔴 **L1 依赖专用空 HOME，否则形同虚设。** 外部 CLI 普遍用**登录 shell** 执行命令
+   （Codex 用 `/bin/zsh -lc`），登录 shell 会 source `~/.zshenv` 与 `~/.zprofile`——
+   其中任何 `export` 都会把 `env -i` 刚剥掉的变量**原样还回子进程**。
+   实测：HOME 指向含 `.zshenv` 的目录时 `DATABASE_URL` / `DEPLOY_TOKEN` 全部复活。
+   故 `sandbox.home_dir` 对 `local-cli` 是**必填**（schema + 校验器 + 沙箱三处 fail-closed），
+   且沙箱启动时断言该目录内无 `.zshenv/.zprofile/.zlogin/.bashrc/.bash_profile/.profile/.envrc`。
+   认证靠 `sandbox.env_set` 精确投喂（如 `CODEX_HOME=~/.codex`），不再需要放行整个真实 HOME。
+2. ⚠️ **禁 push 绝不能用 `git remote set-url`** —— worktree 与主仓共享 `.git/config`，
+   那样会把主仓的 push 地址一起改掉。必须用 env 级 config 覆盖（只影响子进程，不落盘）。
+3. ⚠️ **显式传厂商自己的沙箱参数。** Codex 的 `-s/--sandbox` 若不显式传，会读 `~/.codex/config.toml`——
+   用户若在那里设了 `danger-full-access`，我们的沙箱被静默削弱。适配器显式传 `-s workspace-write` 覆盖之。
 
-- **R1 — HOME 凭据外溢。** 外部 CLI 需要自己的认证才能启动，故 `HOME` 必须在白名单里，
-  连带暴露 `~/.aws`、`~/.config/gcloud` 等。**缓解：配 `sandbox.home_dir` 指向只放该 CLI 认证的专用目录**；
-  不配则脚本运行时告警。这是能做到的最好程度，不是彻底解决。
+**残余风险（诚实列明）：**
+
+- ~~**R1 — HOME 凭据外溢**~~ **已关闭**：`home_dir` 升为硬性前置 + `env_set` 精确投喂认证目录后，
+  子进程既拿不到 `~/.aws` / `~/.config/gcloud`，也不会经 dotfile 还原被剥离的变量。
 - **R2 — 该 CLI 自身推理凭据的花费不受 harness 管控。** 它拿到的仅此一项（拿不到项目的生产与部署凭据），
-  但这笔钱的上限在厂商账户侧，`autonomy-policy.json` 的 budget 管不到。
-- **R3 — 出网未限制。** macOS 上做进程级网络隔离成本过高，当前依赖「无凭据」而非「无网络」。
+  但这笔钱的上限在厂商账户侧，`autonomy-policy.json` 的 budget 管不到。**未解决，设计上接受。**
+- **R3 — 出网未限制。** macOS 上做进程级网络隔离成本过高，当前依赖「无凭据」而非「无网络」。**未解决。**
 - **R4 — 沙箱在 `a2a` transport 下整体失效**：跨机器时沙箱责任转移到对端，需要契约层声明与验证手段。
+- **R5 — `env_set` 指向真实 `CODEX_HOME` 时，子进程对该目录有写权限**（会话库、config）。
+  以 `--ephemeral` 缓解（不落会话文件）；彻底隔离需为沙箱复制一份独立的认证目录。
 
 ### 5.2 信任模型：不信任对方守规矩，只信任产出能过 schema
 
@@ -207,14 +219,16 @@ tag 归属校验（`feat(<batch>-F<num>):` 必须映射 features.json 真实条�
 4. **信封字段白名单不得放宽**（§3.3 ①）
 5. **deploy / prod / 花钱**永远硬停；且**不得依赖 deny-list 拦外部进程**——那是无效的（§5.1）
 
-## 9. 仍待建（需接真实项目验证）
+## 9. 仍待建
 
-- **Codex 适配器未端到端演练**（`adapters/codex.json._verified = false`）：argv/flag 需按当前 CLI 版本核对，
-  核对清单见 `transports/local-cli.md` §7。沿用「机件没建好不许开车」——核对未过不许接 autodrive
-- `/autodrive` 耐久层的四项新职责（§7 表）尚未实装到 skill 步骤里
-- 外部 generator 回流的 tag rewrite 策略未定（rewrite 还是拒收，取决于实战频率）
-- 第二家适配器（Gemini）未写；轮换池目前只有 claude × codex 两个 family
-- `a2a` transport 未实装（`transports/a2a.md` 已锁定接口形状）
+| 项 | 状态 | 说明 |
+|---|---|---|
+| Codex 适配器端到端演练 | ✅ **已完成**（2026-07-25, codex-cli 0.145.0） | 见 `local-cli.md` §7 核对记录；`_verified: true` |
+| `/autodrive` 耐久层四职责 | ✅ **已接线** | 步骤 0 断言 / 步骤 1 注入 / 步骤 6a 收割与去偏比对 / 6a-3 回流 |
+| 外部 generator 回流的 tag 策略 | ✅ **已定：拒收不重写** | 重写 = 未经取证的归属判定，且掩盖 scope 漂移信号（`/autodrive` §6a-3 注） |
+| 第二家适配器（Gemini） | ⬜ 未做 | 本机未安装 gemini CLI，**无法实测核对**；未实测的适配器不写进模板（避免 `_verified:false` 的机件被误用）。轮换池当前 claude × codex 两个 family，去偏机制已可用 |
+| `a2a` transport | ⬜ 未实装（设计如此） | 需为每家写 runner shim + 有真实对端；接口形状已锁定于 `transports/a2a.md` |
+| 端到端**自主**演练（`/autodrive` 全循环带外部派活） | ⬜ 未做 | 单步派活已验证；多轮唤醒 + 闸门 + 回流的整链需接真实项目 |
 
 ## 10. 建造顺序（机制化先于自动化）
 
@@ -223,9 +237,9 @@ tag 归属校验（`feat(<batch>-F<num>):` 必须映射 features.json 真实条�
 3. **回执推断表** ✅
 4. **`waiting` 中断态** ✅
 5. **接 gate-arbiter**（dispatch 分支 + family 轮换）✅
-6. 适配器实测核对 → 置 `_verified: true` ⬜
-7. `/autodrive` 耐久层四项职责 ⬜
-8. 先在 evaluator 单点放开，跑稳后再放开 generator ⬜
+6. 适配器实测核对 → 置 `_verified: true` ✅（Codex）
+7. `/autodrive` 耐久层四项职责 ✅
+8. 先在 evaluator 单点放开，跑稳后再放开 generator ⬜ ← **当前位置**
 
 ## 11. 与现有机制的关系
 
@@ -252,3 +266,4 @@ tag 归属校验（`feat(<batch>-F<num>):` 必须映射 features.json 真实条�
 | 日期 | 修订 | 来源 |
 |---|---|---|
 | 2026-07-25 | 初版（v1.1）：四层设计 / 机件 #7 沙箱 / 回执推断 / waiting 中断态 / family 互斥 / 外部 generator 放开 / gate-arbiter 接线 | A2A 协议研究（`docs/a2a-harness-research-2026-07-25.md`）+ 用户四项裁决 |
+| 2026-07-25 | v1.1.1：Codex 适配器实测转正；**发现登录 shell 经 .zshenv/.zprofile 还原被剥离变量 → `sandbox.home_dir` 升为硬性前置**（R1 关闭）；新增 `sandbox.env_set`；`/autodrive` 四职责接线；tag 策略定为拒收不重写 | codex-cli 0.145.0 端到端演练 |

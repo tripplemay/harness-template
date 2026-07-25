@@ -5,6 +5,58 @@
 
 ---
 
+## v1.1.1 — 2026-07-25（Dispatch Mode 待建项收口：Codex 适配器实测转正 + 沙箱加固）
+
+**来源：** 本机 codex-cli 0.145.0 端到端演练（`local-cli.md` §7.1 核对记录）。
+
+**🔴 安全发现（实测，非推演）——登录 shell 击穿 env 白名单：**
+外部 CLI 普遍用**登录 shell** 执行命令（Codex 用 `/bin/zsh -lc`），登录 shell 会 source
+`~/.zshenv` / `~/.zprofile`——其中任何 `export` 都会把 `env -i` 刚剥掉的变量**原样还回子进程**。
+实测：HOME 指向含 `.zshenv` 的目录时 `DATABASE_URL` / `DEPLOY_TOKEN` 全部复活。
+**沙箱第一道锁在未配 `home_dir` 时形同虚设**，而 v1.1 只把它标为「强烈建议」。
+
+**变更（沙箱加固）：**
+- `sandbox.home_dir` 对 `transport=local-cli` 升为**硬性前置**，三处 fail-closed：
+  schema（`if/then` required）+ `validate-dispatch.sh registry`（拒写）+ `sandbox-profile.sh`（拒跑）
+- 沙箱启动断言专用 HOME 内无 `.zshenv/.zprofile/.zlogin/.bashrc/.bash_profile/.profile/.envrc`
+- 新增 `sandbox.env_set`（字面注入，支持 `~` 展开）：精确投喂该 CLI 的认证目录
+  （如 `CODEX_HOME=~/.codex`），不再需要放行整个真实 HOME → **残余风险 R1 关闭**
+- 适配器显式传厂商自己的沙箱参数（`-s workspace-write`），防用户 `~/.codex/config.toml`
+  设了 `danger-full-access` 而静默削弱沙箱
+- 修 bash 隐患：`$VAR` 紧跟 CJK 全角字符时，bash 在部分 locale 下会把 UTF-8 高位字节并入
+  标识符 → `unbound variable`。全脚本 4 处改为 `${VAR}`
+
+**变更（适配器转正）：**
+- `adapters/codex.json` 按 codex-cli 0.145.0 实测重写并置 `_verified: true`：
+  `codex exec --json --ephemeral -C <wt> -s workspace-write -`；附 `_flags_rationale` /
+  `_not_used`（禁用 `--dangerously-bypass-approvals-and-sandbox`；不用 `--output-schema`
+  因交付契约是产物文件而非消息）
+- `local-cli.md` §7 核对清单扩为 7 条（新增「它用什么 shell」「厂商沙箱参数是否显式传入」两条
+  ——正是本次踩到的两个坑），并写入 §7.1 Codex 核对记录、§7.2「未实测的适配器不写进模板」
+
+**变更（`/autodrive` 耐久层四职责接线）：**
+- 步骤 0：装了 dispatch 时断言 registry/assignments 合法 + 被引用适配器 `_verified: true`
+- 步骤 1：注入 `registry` / `state.head_sha` / `spec_path` / `l2_authorized`（Workflow 无文件系统权限）
+- 步骤 6a：外部产物收割（原样复制、不改内容）+ **去偏比对下沉**（外部主验时引擎手上无逐条判定）
+- 步骤 6a-3：外部 generator 回流四步（tag 归属 → critic → L1 全绿 → cherry-pick）
+- 步骤 7：ledger 加记 `{dispatched_to, model_family, task_id, receipt_state, duration_s}`
+- 不变量补两条：deny-list 管不到外部进程 / 外部产物只搬不改
+
+**决策定案 —— 外部 commit 的 tag 不合规：拒收，不 rewrite。**
+替对方断言「这个 commit 属于 F003」是一次未经取证的归属判定，与铁律 10 精神相悖，
+且会掩盖 scope 漂移信号。代价只是一次唤醒。
+
+**演练结论：** 植入真实缺陷（slugify 未剥离首尾连字符）后派活，Codex 自行编写测试、运行、
+精确命中并判 `PARTIAL`（证据含实际 `-hi-` vs 期望 `hi`），267s 完成；四道锁全部守住
+（凭据零泄漏 / 主仓零改动 / `src/` 未被动 / 无 push 尝试）。**这条演练同时证明它不是橡皮图章**
+——全 PASS 的结果无法区分「真验了」与「没验」。
+
+**未做（诚实列明）：** Gemini 适配器（本机未装 gemini CLI，**未实测的适配器不写进模板**）；
+`waiting` 路径未经真实 CLI 触发验证（回执侧已单测）；`/autodrive` 全循环带外部派活的端到端
+自主演练；`a2a` transport（设计如此，需真实对端）。
+
+---
+
 ## v1.1 — 2026-07-25（Dispatch Mode：自动调配异厂商 agent）
 
 **来源：** A2A 协议 v1.0 研究（`docs/a2a-harness-research-2026-07-25.md`，规范三页 + ADK 集成面）

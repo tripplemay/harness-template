@@ -49,7 +49,7 @@ die() { echo "[sandbox] ⛔ $1" >&2; exit 2; }
 [ -n "$AGENT_ID" ]   || die "缺 --agent"
 [ -n "$ENVELOPE" ]   || die "缺 --envelope"
 [ -f "$ENVELOPE" ]   || die "信封文件不存在：$ENVELOPE"
-[ -f "$REGISTRY" ]   || die "注册表不存在：$REGISTRY（机件未装，不许开车）"
+[ -f "$REGISTRY" ]   || die "注册表不存在：${REGISTRY}（机件未装，不许开车）"
 command -v python3 >/dev/null 2>&1 || die "python3 不可用"
 command -v git     >/dev/null 2>&1 || die "git 不可用"
 
@@ -112,6 +112,11 @@ for k in allow:
     if k not in seen:
         seen.add(k); uniq.append(k)
 print("D_ENV_ALLOW=(" + " ".join(shlex.quote(x) for x in uniq) + ")")
+# env_set：字面注入的键值（~ 展开）。R1 缓解的正确形态——只注入该 CLI 的认证目录
+# （如 CODEX_HOME=~/.codex），而不是把整个真实 HOME 放进白名单连带暴露 ~/.aws 等。
+es = sb.get("env_set") or {}
+print("D_ENV_SET=(" + " ".join(
+    shlex.quote(f"{k}={os.path.expanduser(str(v))}") for k, v in es.items()) + ")")
 PY
 )"
 
@@ -121,9 +126,9 @@ PY
 # ── 2. 独立 worktree（锁定到 sha，detach，不设 upstream）────────────────────
 mkdir -p "$WORKROOT"
 WT="$(cd "$WORKROOT" && pwd)/${E_BATCH}-${AGENT_ID}-${E_TASK_ID}"
-[ -e "$WT" ] && die "worktree 已存在：$WT（同 task_id 重复派活？幂等键应去重）"
+[ -e "$WT" ] && die "worktree 已存在：${WT}（同 task_id 重复派活？幂等键应去重）"
 git worktree add --detach "$WT" "$REF" >/dev/null 2>&1 \
-  || die "worktree 创建失败（ref=$REF）"
+  || die "worktree 创建失败（ref=${REF}）"
 echo "[sandbox] worktree: $WT @ ${REF:0:12}" >&2
 
 # ── 3. env 白名单（构造子进程环境；未列出的一律不传）────────────────────────
@@ -133,19 +138,27 @@ ENV_ARGS=()
 for k in "${D_ENV_ALLOW[@]}"; do
   if [ -n "${!k+x}" ]; then ENV_ARGS+=("$k=${!k}"); fi
 done
+# 字面注入（descriptor.sandbox.env_set）——优先于白名单继承，用于精确投喂该 CLI 的认证位置
+for kv in ${D_ENV_SET[@]+"${D_ENV_SET[@]}"}; do ENV_ARGS+=("$kv"); done
 # 禁 push：env 级 git config 覆盖，只影响子进程，不写磁盘 config
 # （worktree 与主仓共享 .git/config，用 `git remote set-url` 会污染主仓——绝不可用）
 ENV_ARGS+=("GIT_CONFIG_COUNT=1" "GIT_CONFIG_KEY_0=remote.origin.pushurl" \
            "GIT_CONFIG_VALUE_0=DISABLED_BY_HARNESS_SANDBOX" "GIT_TERMINAL_PROMPT=0")
-# 专用 HOME（可选但强烈建议）：真实 HOME 会连带暴露 ~/.aws、~/.config/gcloud 等凭据。
-# descriptor.sandbox.home_dir 指向只放该 CLI 认证的独立目录即可消除这块残余风险。
-if [ -n "$D_HOME" ]; then
-  mkdir -p "$D_HOME"
-  ENV_ARGS+=("HOME=$D_HOME")
-  echo "[sandbox] 专用 HOME: $D_HOME" >&2
-else
-  echo "[sandbox] ⚠️ 未配 sandbox.home_dir，子进程继承真实 HOME —— 残余凭据暴露风险（见 dispatch-mode.md §5.1）" >&2
-fi
+# 🔴 专用 HOME 是**硬性前置**，不是可选加固。原因（实测，非推演）：
+# 外部 CLI 普遍用登录 shell 执行命令（Codex 0.145.0 用 `/bin/zsh -lc`），
+# 登录 shell 会 source `~/.zshenv` / `~/.zprofile`——其中任何 `export` 都会把
+# env -i 刚剥掉的变量**原样还回子进程**，静默击穿第一道锁。
+# 实测：HOME 指向含 `.zshenv` 的目录时，DATABASE_URL / DEPLOY_TOKEN 全部复活。
+[ -n "$D_HOME" ] || die "$AGENT_ID 未配 sandbox.home_dir —— 子进程会继承真实 HOME，
+   其 .zshenv/.zprofile 中的 export 将绕过 env 白名单还原敏感变量（dispatch-mode.md §5.1 L1）。
+   请配置专用 HOME，并用 sandbox.env_set 投喂该 CLI 的认证目录（如 CODEX_HOME）。"
+mkdir -p "$D_HOME"
+# 专用 HOME 里若混入 shell 初始化文件，同一个洞照样重开 —— fail-closed
+for dotf in .zshenv .zprofile .zlogin .bashrc .bash_profile .profile .envrc; do
+  [ -e "$D_HOME/$dotf" ] && die "专用 HOME 内存在 shell 初始化文件 $D_HOME/$dotf —— 它会在登录 shell 下被 source 并绕过 env 白名单。请移除。"
+done
+ENV_ARGS+=("HOME=$D_HOME")
+echo "[sandbox] 专用 HOME: ${D_HOME}（已确认无 shell 初始化文件）" >&2
 ENV_ARGS+=("HARNESS_ENVELOPE=$(cd "$(dirname "$ENVELOPE")" && pwd)/$(basename "$ENVELOPE")")
 ENV_ARGS+=("HARNESS_ARTIFACT=$E_ARTIFACT" "HARNESS_BATCH=$E_BATCH" "HARNESS_TASK_ID=$E_TASK_ID")
 

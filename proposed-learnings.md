@@ -117,3 +117,12 @@
      来源：docs/a2a-harness-research-2026-07-25.md。
      仍待建见 dispatch-mode.md §9（Codex 适配器端到端演练 / /autodrive 耐久层四职责 / tag rewrite 策略 /
      第二家适配器 / a2a transport）——沿用「机件没建好不许开车」，适配器核对未过不许接 autodrive。 -->
+
+<!-- 2026-07-25: Dispatch Mode 待建项收口（v1.1.1）。Codex 适配器经 codex-cli 0.145.0 端到端演练转正
+     （_verified:true）；/autodrive 耐久层四职责接线；tag 策略定为「拒收不重写」。
+     🔴 实测安全发现：外部 CLI 用登录 shell（/bin/zsh -lc）执行命令，会 source ~/.zshenv|~/.zprofile
+     把 env -i 剥掉的变量原样还回 → sandbox.home_dir 升为硬性前置（schema+校验器+沙箱三处 fail-closed）
+     + 新增 sandbox.env_set 精确投喂认证目录，残余风险 R1 关闭。
+     附带修：适配器显式传厂商沙箱参数防 config 削弱；$VAR 紧跟 CJK 全角字符导致 bash unbound（4 处 → ${VAR}）。
+     CHANGELOG v1.1.1。未做：Gemini 适配器（本机未装，未实测不入模板）、waiting 路径真实触发、
+     /autodrive 全循环自主演练、a2a transport。 -->

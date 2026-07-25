@@ -77,10 +77,15 @@
 
 | 锁 | 实现 | 拦住 |
 |---|---|---|
-| env 白名单 | `env -i` + descriptor 显式列名 | prod 凭据 / 部署 token / 他家 API key |
+| env 白名单 | `env -i` + descriptor 显式列名 **+ 专用空 HOME（必填）** | prod 凭据 / 部署 token / 他家 API key |
 | 独立 worktree | `git worktree add --detach <sha>` | 污染工作区、并行互踩 |
 | 禁 push | `GIT_CONFIG_*` env 级覆盖 `remote.origin.pushurl` | 直接改 main |
 | wall-clock 封顶 | `timeout -k 10 <timeout_s>` | 跑飞挂死 |
+
+🔴 **`sandbox.home_dir` 是必填，不是可选加固。** 外部 CLI 普遍用**登录 shell** 执行命令
+（Codex 用 `/bin/zsh -lc`），它会 source `~/.zshenv` / `~/.zprofile`——其中任何 `export`
+都会把 `env -i` 剥掉的变量原样还回子进程，静默击穿第一道锁。认证改用 `sandbox.env_set`
+精确投喂（如 `CODEX_HOME=~/.codex`），不放行整个真实 HOME。
 
 ⚠️ **禁 push 绝不能用 `git remote set-url`** —— worktree 与主仓共享 `.git/config`，
 那样会把主仓的 push 地址一起改掉。必须用 env 级 config 覆盖（只影响子进程，不落盘）。
@@ -90,7 +95,9 @@
 外部 generator 的 `constraints.push` 恒为 `false`，产物是 worktree 里的 commit。回流四步：
 
 1. **tag 归属校验**：`feat(<batch>-F<num>):` 必须映射 `features.json` 真实条目（铁律 10）。
-   外部 CLI 未必守这个格式 → 不合规就 rewrite tag 或拒收，不许带进主仓
+   外部 CLI 未必守这个格式 → **不合规一律拒收 + 硬停，不 rewrite**。
+   理由：替对方断言「这个 commit 属于 F003」是一次未经取证的归属判定，与铁律 10
+   「无归属的代码修改 = 越界」的精神相悖，且会掩盖 scope 漂移信号。代价只是一次唤醒
 2. **spec-lock critic 稽核**：跑机件 #2（`.claude/agents/spec-lock-critic.md`）比对 diff 与 scope，
    稽核时机从「writeback 前」前移到「拉回主仓前」
 3. **L1 全绿**：`lint / tsc / test` 是外部 generator 唯一的硬证据——代码 diff 比 verdict 更好机械核验
@@ -98,15 +105,37 @@
 
 ## 7. 新增一家 CLI 的核对清单
 
-`adapters/<name>.json` 五个字段填完即可（schema 见 `agents-registry.schema.json` 的 adapter 段），
-但**开车前必须逐条实测核对**，把 `_verified` 置 `true` 并记录 CLI 版本：
+`adapters/<name>.json` 填完即可接入，但**开车前必须逐条实测核对**，把 `_verified` 置 `true` 并记录 CLI 版本：
 
-- [ ] `argv` 在当前 CLI 版本下语法正确（flag 名、`--cd` 语义、是否需要 `--yes/--yolo` 类免交互开关）
-- [ ] 该 CLI 在 `env -i` 白名单环境下能正常启动（认证不依赖白名单外的变量）
-- [ ] 非交互模式确实不会卡在 TTY 等待输入（否则只能靠 timeout 兜底，浪费一个封顶周期）
-- [ ] 它写产物的路径与 `artifact_relpath` 一致
-- [ ] 它撞 L2 时会写 `waiting` 而不是非零退出
-- [ ] `sandbox.home_dir` 指向的专用 HOME 里已放好该 CLI 的认证
+| # | 核对项 | 为什么 |
+|---|---|---|
+| 1 | `argv` 在当前 CLI 版本下语法正确（flag 名、工作根语义、免交互开关） | flag 会随版本变；错一个字沙箱就跑空 |
+| 2 | 该 CLI 在 `env -i` + 专用空 HOME 下能正常启动（认证不依赖白名单外的变量） | 认证挂了会表现为「礼貌失败」，比崩溃更难发现 |
+| 3 | **它用什么 shell 执行命令**（`ps`/日志里看是否 `-l` 登录 shell） | 决定 dotfile 还原风险；登录 shell ⇒ 专用空 HOME 必须干净 |
+| 4 | **它自己的沙箱/审批参数是否被显式传入**（而非读用户 config） | 用户 config 可能把它调成 full-access，静默削弱我们的沙箱 |
+| 5 | 非交互模式确实不会卡在 TTY 等待输入 | 否则只能靠 timeout 兜底，浪费一个封顶周期 |
+| 6 | 它写产物的路径与 `artifact_relpath` 一致 | 不一致 ⇒ 回执恒为 `ARTIFACT_MISSING` |
+| 7 | 它撞 L2 时写 `waiting` 而非非零退出 | 非零退出会被判 FAILED 并触发无意义重派 |
 
-**首家（Codex）尚未端到端演练** —— `adapters/codex.json._verified = false`。
-沿用 autonomous-mode.md §10「机件没建好不许开车」：核对未过不许接 autodrive。
+### 7.1 Codex 核对记录（codex-cli 0.145.0 · 2026-07-25 · 通过）
+
+| # | 结论 |
+|---|---|
+| 1 | `codex exec --json --ephemeral -C <wt> -s workspace-write -` ✅。`exec` 省略 PROMPT 或写 `-` 时从 stdin 读指令 |
+| 2 | ✅ 认证在 `$CODEX_HOME/auth.json`；`sandbox.env_set = {"CODEX_HOME": "~/.codex"}` 即可，无需放行真实 HOME |
+| 3 | 🔴 **用 `/bin/zsh -lc`（登录 shell）** —— 本条正是 `home_dir` 升为必填的直接原因 |
+| 4 | 🔴 `-s/--sandbox` 不显式传会读 `~/.codex/config.toml`；适配器显式传 `workspace-write` 覆盖。**不得使用 `--dangerously-bypass-approvals-and-sandbox`** |
+| 5 | ✅ `exec` 全自动，未观察到 TTY 阻塞 |
+| 6 | ✅ 按信封 `deliverable.artifact` 写到 `docs/test-reports/<batch>-verdict.json` |
+| 7 | ⚠️ **未覆盖** —— 演练用的是 L1-only 场景，`waiting` 路径未经真实 Codex 触发验证（回执侧已单测） |
+
+**演练结论：** 植入一处真实缺陷（slugify 未剥离首尾连字符）后派活，Codex 自行编写测试、
+运行、精确命中该缺陷并判 `PARTIAL`，证据含实际值 `-hi-` 与期望值 `hi`。全程 267s，
+四道锁全部守住（凭据零泄漏、主仓零改动、`src/` 未被动、无 push 尝试）。
+—— 这条演练同时验证了它**不是橡皮图章**：全 PASS 的结果无法区分「真验了」与「没验」。
+
+### 7.2 未纳入模板的适配器
+
+未在本机实测核对的适配器**不写进模板**——一个 `_verified: false` 的机件被误用，
+比没有这个机件更危险。Gemini 适配器因本机未安装 gemini CLI 而暂缺；
+去偏轮换池当前为 `claude` × `codex` 两个 family，机制已可用。

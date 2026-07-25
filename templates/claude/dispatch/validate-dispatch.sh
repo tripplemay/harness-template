@@ -78,8 +78,11 @@ for a in agents:
         errs.append(f"[{aid}] 含 evaluator 角色却 constraints.write_src=true —— 违反「Evaluator 不修改产品代码」")
     if t != "subagent" and c.get("push") is True:
         errs.append(f"[{aid}] 外部实例（transport={t}）不得 constraints.push=true —— 产物须由编排者校验 tag 归属后回流")
+    # 硬性前置：外部 CLI 用登录 shell 执行命令，继承真实 HOME 会让 ~/.zshenv / ~/.zprofile
+    # 里的 export 绕过 env 白名单还原敏感变量（实测，dispatch-mode.md §5.1 L1）
     if t == "local-cli" and not (a.get("sandbox") or {}).get("home_dir"):
-        print(f"[dispatch] ⚠️ [{aid}] 未配 sandbox.home_dir —— 子进程将继承真实 HOME（残余凭据暴露风险）")
+        errs.append(f"[{aid}] transport=local-cli 必须配 sandbox.home_dir —— "
+                    f"否则子进程继承真实 HOME，其 .zshenv/.zprofile 的 export 会绕过 env 白名单")
 
 if errs:
     print(f"[dispatch] ⛔ 注册表校验失败（{p}）：")

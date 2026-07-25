@@ -74,12 +74,17 @@
             "properties": {
               "home_dir": {
                 "type": "string",
-                "description": "专用 HOME，只放该 CLI 的认证。强烈建议配置——不配则子进程继承真实 HOME，连带暴露 ~/.aws、~/.config/gcloud 等凭据（残余风险，见 dispatch-mode.md §5.1）"
+                "description": "🔴 transport=local-cli 时**必填**。专用 HOME，且其中不得含 shell 初始化文件。原因（实测）：外部 CLI 普遍用登录 shell 执行命令（Codex 用 /bin/zsh -lc），登录 shell 会 source ~/.zshenv 与 ~/.zprofile——其中任何 export 都会把 env -i 剥掉的变量原样还回子进程，静默击穿 env 白名单。顺带也隔离了 ~/.aws、~/.config/gcloud 等凭据"
               },
               "env_allow": {
                 "type": "array",
                 "items": { "type": "string" },
-                "description": "在基础白名单之外额外放行的环境变量名。白名单制——未列出的一律不传，prod DATABASE_URL / 各家 API key 结构上到不了子进程"
+                "description": "在基础白名单之外额外放行的环境变量名（从父进程继承其值）。白名单制——未列出的一律不传，prod DATABASE_URL / 各家 API key 结构上到不了子进程"
+              },
+              "env_set": {
+                "type": "object",
+                "additionalProperties": { "type": "string" },
+                "description": "字面注入的环境变量（值支持 ~ 展开）。R1 残余风险的正确缓解形态：只投喂该 CLI 的认证目录（如 {\"CODEX_HOME\": \"~/.codex\"}），而不是把整个真实 HOME 放进白名单、连带暴露 ~/.aws、~/.config/gcloud"
               }
             }
           },
@@ -97,7 +102,10 @@
         "allOf": [
           {
             "if": { "properties": { "transport": { "const": "local-cli" } }, "required": ["transport"] },
-            "then": { "required": ["adapter"] }
+            "then": {
+              "required": ["adapter", "sandbox"],
+              "properties": { "sandbox": { "required": ["home_dir"] } }
+            }
           },
           {
             "if": { "properties": { "transport": { "const": "a2a" } }, "required": ["transport"] },
