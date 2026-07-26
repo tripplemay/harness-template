@@ -404,9 +404,10 @@ cfg = {"framework": {"source": "harness-template",
        "project": {"name": os.path.basename(os.path.abspath(PROJECT))}}
 json.dump(cfg, open(cfg_path, "w"), ensure_ascii=False, indent=2)
 open(cfg_path, "a").write("\n")
-print(f"[harness] ✓ adopt 完成：记录为 v{as_version}，受管 {present} 个文件")
+shown = as_version if not as_version[:1].isdigit() else f"v{as_version}"   # 别把 unknown 印成 "vunknown"
+print(f"[harness] ✓ adopt 完成：记录为 {shown}，受管 {present} 个文件")
 if differs:
-    print(f"   与 v{as_version} 原文不同的有 {len(differs)} 个（本地定制或版本落后，已按现状入基准线）：")
+    print(f"   与 {shown} 原文不同的有 {len(differs)} 个（本地定制或版本落后，已按现状入基准线）：")
     for d in differs[:15]: print(f"      {d}")
     if len(differs) > 15: print(f"      …… 另 {len(differs)-15} 个")
 if missing:
