@@ -2,6 +2,7 @@
 
 > **状态：P1/P2 已实装。** 服务在 `console/`（自托管，不随 bootstrap 铺进项目）；
 > 项目侧机件在 `.claude/console/`（闸门契约 + 校验器 + 人类批准 CLI，随 bootstrap 铺入）。
+> 决策回传有**两条通道**（§2）：git（控制台持 push 权限）或 device agent 中继（控制台零 git 权限，需 §3.2 验签模式）。
 > **P3（agent 实时日志上报）/ P4（云端跨机调度）已设计未实装**，见 §7。
 >
 > **加载层级：T2（按需）。** 仅在部署/运维控制台时加载。
@@ -23,13 +24,28 @@ harness 是 **hub 形态、状态机唯一持有者、git 是唯一真相源**�
 这与 `/dashboard` 一脉相承——它已经写着「看板是只读镜像，不是真相源」。
 控制台是它的多项目、可交互版本，不是另起炉灶。
 
-## 2. 传输就是 git
+## 2. 传输：两条通道，同一个真相源
 
-控制台在自己所在机器维护各项目的**本地克隆**，定时 `git pull` 读状态；批准时写
-`pending_gate.decision` 并 `commit + push`。
-
+**通道 A —— git（原生，`console/server.py` 走这条）：** 控制台在自己所在机器维护各项目的
+**本地克隆**，定时 `git pull` 读状态；批准时写 `pending_gate.decision` 并 `commit + push`。
 **不依赖 GitHub API**（任何 remote 都能用），**不引入第二个真相源**，
 且和其他所有参与方（编排者、a2a runner、外部 CLI）用的是同一条总线。
+**代价：控制台必须持有各项目的 push 权限**——它是唯一持有该凭据的组件（见 §5）。
+
+**通道 B —— device agent 中继（推荐；需 §3.2 验签模式）：** 控制台只**签发**一条带签名的
+决策，由机器上已有的**出站轮询** agent 拉走、验签后写进本机 `progress.json` 并 commit。
+
+```
+控制台（持私钥，签发）  →  device 通道（agent 主动出站拉取）  →  机器（验签后落盘 + commit）
+```
+
+三处好处，每一处都对应通道 A 的一个代价：控制台**不需要任何项目的 git 写权限**；
+不需要能连到机器（**天然穿 NAT**，不必给内网机器开入站）；不需要为每个项目维护本地克隆。
+**真相源没有变**——决策照样落成 git 里的一个 commit，只是搬运工从控制台换成了机器自己。
+
+两条通道的守门是同一个 `validate-pending-gate.sh guard`：通道 A 靠「比对 HEAD」（信任在
+**传输路径**），通道 B 靠「验签」（信任在**内容本身**）。**通道 B 没有验签模式就不成立**——
+见 §3.2。
 
 ## 3. 闸门契约（P2 的地基）
 
@@ -110,7 +126,15 @@ validate-pending-gate.sh guard 用仓库里的 console.pub 验签
 | 闸门校验器（schema/guard/hook） | `.claude/console/validate-pending-gate.sh` | ✅ | 已装 ✅ 实测 |
 | 人类批准 CLI | `.claude/console/approve-gate.sh` | ✅ | 已装 ✅ 实测 |
 | PostToolUse 接线 | `.claude/settings.json` | ✅ | 已接 |
-| 控制台服务 | `console/server.py` + `ui.html` | ❌ 自托管，单独部署 | 已装 ✅ 实测 |
+| 控制台服务（通道 A） | `console/server.py` + `ui.html` | ❌ 自托管，单独部署 | 已装 ✅ 实测 |
+| 密钥生成（验签模式） | `.claude/console/gen-console-key.sh` | ✅ | 已装 ✅ 实测 |
+| 公钥（验签模式的开关） | `.claude/console/console.pub` | ❌ 各项目自行放入 | 按需；放了就切验签模式 |
+| 中继实现（通道 B） | 另一工程（tokenizer）：服务端签发 + device agent 验签落盘 | ❌ 不属于本框架 | 已实装 ⚠️ 端到端待实机验证 |
+
+**通道 B 的实现不在本仓库**——它借的是一个已有 device agent 的工程（tokenizer：设备注册 +
+per-device 凭据 + 出站轮询）。框架这边只规定**契约**：签名载荷的规范化方式（§3.2）、
+`decision` 的字段白名单（schema）、以及机器侧的验签守门。任何持有出站 agent 的系统都能按
+这份契约接上，不必是那一个工程。
 
 ## 5. 部署
 
@@ -125,8 +149,13 @@ python3 console/server.py --config console/console.config.json --host 0.0.0.0 --
 
 访问 `http://<host>:41300/?token=<token>`。**建议放在反代 + TLS 之后**——当前只有 Bearer，无 TLS 终结。
 
-**控制台需要各项目的 push 权限**（写 decision）。它是**唯一持有该凭据的组件**——
+**走通道 A 时，控制台需要各项目的 push 权限**（写 decision）。它是**唯一持有该凭据的组件**——
 机器上的 agent 没有控制台凭据，控制台也没有 agent 的执行能力。这个分离本身就是护栏。
+
+**走通道 B 时这条凭据就不存在了**：控制台只持 Ed25519 私钥（环境变量注入，绝不入仓库），
+不持任何项目的 git 权限。少一份长期凭据，且私钥泄露的后果比 push 权限泄露**更容易收敛**——
+换一对密钥、把新 `console.pub` 提交进各项目即可，不必去每个 remote 上吊销权限。
+两条通道可以并存：配了 `console.pub` 的项目走验签，没配的仍按比对 HEAD 走 git。
 
 ## 6. 安全模型
 
@@ -151,6 +180,9 @@ python3 console/server.py --config console/console.config.json --host 0.0.0.0 --
 - **P4 云端跨机调度：** 需要机器注册 + 心跳 + 任务路由，以及一个**架构反转**——
   runner 现在是 server（要求云端能连它），而真实跨机器时机器多在 NAT 后。
   现实做法是把 runner 改成主动连云端拉任务；`taskId` / 幂等 / 事件序号语义可整套保留。
+  **通道 B 已经把这个反转跑通了一遍**（出站轮询 + per-device 凭据 + 幂等下发 + 回执消费），
+  P4 可以照搬这条形状——差别只在于载荷从「一条决策」变成「一批活」，且多出「派活前断言
+  目标机器机件在位」这一条（见下）。
   另需 per-machine 凭据（现在是共享 Bearer），以及**派活前断言目标机器机件在位**——
   Agent Card 的 `x-harness.sandboxed` 是声明不是证明，跨机器需要更硬的东西（如机件文件哈希）。
 - 多操作员与权限分级（现在是单 token 单 operator）
@@ -170,3 +202,5 @@ python3 console/server.py --config console/console.config.json --host 0.0.0.0 --
 | 日期 | 修订 | 来源 |
 |---|---|---|
 | 2026-07-25 | 初版（v1.3）：闸门契约 `pending_gate` + 自我盖章 guard + 人类批准 CLI + 自托管控制台（观测面 + 人闸门 UI） | 用户三项裁决；P3/P4 设计已定未实装 |
+| 2026-07-25 | v1.3.1：`decision` Ed25519 验签模式（§3.2）——信任从传输路径移到内容本身，中继通道的前提 | 实测 6 项；跨语言（Node × openssl）一致性已验 |
+| 2026-07-25 | v1.3.2：通道 B 实装 —— §2 改写为两条通道；§4 补中继行与契约边界；§5 说明 push 权限只在通道 A 需要 | tokenizer 工程按本契约接入；端到端待实机验证 |
