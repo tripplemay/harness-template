@@ -118,6 +118,14 @@ validate-pending-gate.sh guard 用仓库里的 console.pub 验签
 > `! bash .claude/console/approve-gate.sh --approve --by <你>`。
 > 「人闸门归人」的意思就是这一步不能由 agent 完成，无论谁要求。
 
+> **🔴 已知缺陷（未修）：上面这条本机路径在验签模式下不通。** `approve-gate.sh` 写的是
+> **无签名**的 decision，而配了 `console.pub` 的仓库一律拒收未签名决策——可脚本还会打印
+> 「✓ 已提交，guard 自动放行」**并且已经 commit**。于是工作区与 HEAD 里留下一条永远
+> 过不了 guard 的 decision，fail-closed 的 hook 会把该批次卡死，得人工回滚那个 commit。
+> **配了 `console.pub` 的项目请一律从控制台批准**；若已误跑，`git revert` 掉那条
+> `chore(gate)` 提交即可恢复。修法待定：给脚本加 `--key <console.key>` 用 openssl 按同一套
+> 规范化签名（并在有 `console.pub` 却没给 key 时当场拒绝），代价是人类需持一份私钥副本。
+
 ## 4. 组件
 
 | 组件 | 位置 | 随 bootstrap 铺入 | 状态 |
@@ -129,7 +137,7 @@ validate-pending-gate.sh guard 用仓库里的 console.pub 验签
 | 控制台服务（通道 A） | `console/server.py` + `ui.html` | ❌ 自托管，单独部署 | 已装 ✅ 实测 |
 | 密钥生成（验签模式） | `.claude/console/gen-console-key.sh` | ✅ | 已装 ✅ 实测 |
 | 公钥（验签模式的开关） | `.claude/console/console.pub` | ❌ 各项目自行放入 | 按需；放了就切验签模式 |
-| 中继实现（通道 B） | 另一工程（tokenizer）：服务端签发 + device agent 验签落盘 | ❌ 不属于本框架 | 已实装 ⚠️ 端到端待实机验证 |
+| 中继实现（通道 B） | 另一工程（tokenizer）：服务端签发 + device agent 验签落盘 | ❌ 不属于本框架 | 已实装 ✅ 生产往返实测 |
 
 **通道 B 的实现不在本仓库**——它借的是一个已有 device agent 的工程（tokenizer：设备注册 +
 per-device 凭据 + 出站轮询）。框架这边只规定**契约**：签名载荷的规范化方式（§3.2）、
@@ -203,4 +211,5 @@ python3 console/server.py --config console/console.config.json --host 0.0.0.0 --
 |---|---|---|
 | 2026-07-25 | 初版（v1.3）：闸门契约 `pending_gate` + 自我盖章 guard + 人类批准 CLI + 自托管控制台（观测面 + 人闸门 UI） | 用户三项裁决；P3/P4 设计已定未实装 |
 | 2026-07-25 | v1.3.1：`decision` Ed25519 验签模式（§3.2）——信任从传输路径移到内容本身，中继通道的前提 | 实测 6 项；跨语言（Node × openssl）一致性已验 |
-| 2026-07-25 | v1.3.2：通道 B 实装 —— §2 改写为两条通道；§4 补中继行与契约边界；§5 说明 push 权限只在通道 A 需要 | tokenizer 工程按本契约接入；端到端待实机验证 |
+| 2026-07-25 | v1.3.2：通道 B 实装 —— §2 改写为两条通道；§4 补中继行与契约边界；§5 说明 push 权限只在通道 A 需要 | tokenizer 工程按本契约接入；本机整栈 + 生产各跑通一次完整往返 |
+| 2026-07-25 | 记录已知缺陷：验签模式下 `approve-gate.sh` 写无签名 decision 且谎报成功（§3.2 注） | 生产演练中实测复现；修法待用户裁决 |
