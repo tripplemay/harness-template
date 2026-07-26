@@ -178,13 +178,21 @@ version, commit, source_path = sys.argv[3], sys.argv[4], sys.argv[5]
 managed, seeded = entries()
 lock = {"lock_version": 1, "framework": {"version": version, "commit": commit},
         "managed": {}, "seeded": {}}
+kept = []
 for dst, src in sorted(managed.items()) + sorted(seeded.items()):
     s, d = os.path.join(SRC, src), os.path.join(PROJECT, dst)
+    bucket = "managed" if dst in managed else "seeded"
+    # 🔴 seeded 是**项目自有内容**（CLAUDE.md / progress.json / 记忆…）。往一个已有项目里
+    # 装 harness 时它们可能已经存在且有真内容——覆盖等于毁掉人家的东西。已存在即保留，
+    # 只把它记进 lock。managed 则照铺（框架拥有，本来就该是框架的版本）。
+    if bucket == "seeded" and os.path.exists(d):
+        kept.append(dst)
+        lock[bucket][dst] = {"src": src, "sha256": sha(d), "upstream": sha(s)}
+        continue
     os.makedirs(os.path.dirname(d), exist_ok=True)
     shutil.copy2(s, d)
     if is_exec(d):
         os.chmod(d, 0o755)
-    bucket = "managed" if dst in managed else "seeded"
     h = sha(d)
     lock[bucket][dst] = {"src": src, "sha256": h, "upstream": h}   # 刚装上，两者必然相同
 json.dump(lock, open(os.path.join(PROJECT, "harness.lock"), "w"), ensure_ascii=False, indent=2)
@@ -197,6 +205,12 @@ json.dump(cfg, open(os.path.join(PROJECT, "harness.json"), "w"), ensure_ascii=Fa
 open(os.path.join(PROJECT, "harness.json"), "a").write("\n")
 print(f"[harness] ✓ init 完成：框架 v{version} ({commit})，受管 {len(lock['managed'])} 个文件，"
       f"项目自有 {len(lock['seeded'])} 个")
+if kept:
+    print(f"   ↳ {len(kept)} 个项目自有文件**已存在，保留原样**（未被模板覆盖）：")
+    for k in kept[:10]:
+        print(f"      {k}")
+    if len(kept) > 10:
+        print(f"      …… 另 {len(kept)-10} 个")
 PY
   scaffold_project
 }
