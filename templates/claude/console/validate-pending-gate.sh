@@ -135,7 +135,9 @@ PY
       ERR*)  echo "[gate] ⛔ guard（验签模式）：${RC#ERR }"; exit 2 ;;
     esac
     if openssl pkeyutl -verify -pubin -inkey "$PUB" -rawin -in "$PAY" -sigfile "$SIG" >/dev/null 2>&1; then
-      echo "[gate] ✓ guard（验签模式）：decision 签名有效（控制台签发）"; exit 0
+      # 说「持私钥者」而非「控制台」：签名只证明签发者持有私钥，而私钥有两个合法持有者
+      # ——控制台服务端，和用 approve-gate.sh --key 在本机批准的人类。
+      echo "[gate] ✓ guard（验签模式）：decision 签名有效（由持私钥者签发）"; exit 0
     fi
     echo "[gate] ⛔ guard（验签模式）：**签名无效** —— 该 decision 不是控制台签发的。"
     echo "   载荷被篡改，或有人试图伪造批准。人闸门必须由控制台或持私钥的人类签发。"

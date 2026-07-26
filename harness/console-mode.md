@@ -11,6 +11,15 @@
 
 ---
 
+## 0. 前提：控制台是辅助工具，不是依赖
+
+**没有控制台，harness 照常跑。** 状态机、闸门、批准、验收全部在机器上完成：闸门由
+`.claude/console/` 的三个机件（schema / guard / `approve-gate.sh`）自洽守门，人类持私钥
+即可在本机批准（§3.3）。控制台只做两件锦上添花的事——把多个项目的进度**看**在一处，
+以及让你**不在这台机器前**时也能批准。它挂了，影响的只是这两件事。
+
+任何让「控制台在线」成为开发或批准前提的设计，都违反本文件的红线（§8）。
+
 ## 1. 一条决定形态的红线：控制台不是编排者
 
 harness 是 **hub 形态、状态机唯一持有者、git 是唯一真相源**。
@@ -118,13 +127,34 @@ validate-pending-gate.sh guard 用仓库里的 console.pub 验签
 > `! bash .claude/console/approve-gate.sh --approve --by <你>`。
 > 「人闸门归人」的意思就是这一步不能由 agent 完成，无论谁要求。
 
-> **🔴 已知缺陷（未修）：上面这条本机路径在验签模式下不通。** `approve-gate.sh` 写的是
-> **无签名**的 decision，而配了 `console.pub` 的仓库一律拒收未签名决策——可脚本还会打印
-> 「✓ 已提交，guard 自动放行」**并且已经 commit**。于是工作区与 HEAD 里留下一条永远
-> 过不了 guard 的 decision，fail-closed 的 hook 会把该批次卡死，得人工回滚那个 commit。
-> **配了 `console.pub` 的项目请一律从控制台批准**；若已误跑，`git revert` 掉那条
-> `chore(gate)` 提交即可恢复。修法待定：给脚本加 `--key <console.key>` 用 openssl 按同一套
-> 规范化签名（并在有 `console.pub` 却没给 key 时当场拒绝），代价是人类需持一份私钥副本。
+### 3.3 🔴 本机批准不依赖控制台
+
+**控制台不是批准权的来源，只是同一把私钥的另一个持有者。** 验签模式**不得**把「人类能否
+批准」变成「控制台是否在线」——那等于把红线 §8.1（推进键在机器侧）交给一个可用性组件。
+
+`approve-gate.sh` 在两种模式下都自足：
+
+| 模式 | 脚本行为 | guard 判据 |
+|---|---|---|
+| 无 `console.pub` | 写明文 decision + commit | 比对 HEAD |
+| 有 `console.pub` | **本机用私钥签名**（openssl，与控制台逐字节等价）后 commit | 验签 |
+
+私钥按序探测：`--key <路径>` → `$HARNESS_CONSOLE_KEY` → `~/.harness-console/console.key`；
+也支持 `--key keychain:<服务名>` 从 macOS 钥匙串取。**控制台挂了、网络断了、密钥没上云，
+本机批准照常可用**；日常开发从不需要控制台在线。
+
+**三条 fail-closed，都在写盘之前或提交之前拦住：**
+- 验签模式下拿不到私钥 → **当场退出**，`progress.json` 一个字节都不改
+  （若先写后查，留下的是一条永远过不了 guard 的 decision，而 fail-closed 的 hook 会把
+  整个批次卡死到人工回滚为止——这正是 v1.3.2 时踩到的）
+- 私钥与仓库里的 `console.pub` 不是一对（比如轮换后拿了旧的）→ 拒，不签
+- 写完先自检：验签模式**提交前**跑 guard；比对 HEAD 模式的判据就是「随 HEAD 到达」，
+  故**提交后**跑，不通过则给出确切的回退命令（不自动改写历史）
+
+**⚠️ 私钥与 agent 同机时的残余风险：** 私钥放在本机文件里，跑在同一台机器上的 agent
+原则上也读得到——「agent 伪造不了签名」这条保证就退化成文件权限加你对 agent 的约束。
+要把它拿回来，把私钥放进钥匙串并要求每次确认（`-T ""`，见脚本文末「加固」）：
+无人值守的 agent 过不了系统授权框，而你本人过得去。
 
 ## 4. 组件
 
@@ -132,7 +162,7 @@ validate-pending-gate.sh guard 用仓库里的 console.pub 验签
 |---|---|---|---|
 | 闸门 schema | `.claude/console/pending-gate.schema.json` | ✅ | 已装 |
 | 闸门校验器（schema/guard/hook） | `.claude/console/validate-pending-gate.sh` | ✅ | 已装 ✅ 实测 |
-| 人类批准 CLI | `.claude/console/approve-gate.sh` | ✅ | 已装 ✅ 实测 |
+| 人类批准 CLI（两模式自足，含本机签名） | `.claude/console/approve-gate.sh` | ✅ | 已装 ✅ 实测 |
 | PostToolUse 接线 | `.claude/settings.json` | ✅ | 已接 |
 | 控制台服务（通道 A） | `console/server.py` + `ui.html` | ❌ 自托管，单独部署 | 已装 ✅ 实测 |
 | 密钥生成（验签模式） | `.claude/console/gen-console-key.sh` | ✅ | 已装 ✅ 实测 |
@@ -202,6 +232,8 @@ python3 console/server.py --config console/console.config.json --host 0.0.0.0 --
 2. 控制台是只读镜像，渲染出错不影响状态机；真相永远在 `progress.json` / `features.json`
 3. `pending_gate.decision` 只有人类/控制台可写，agent 侧机械拒绝（§3.1）
 4. 沙箱（机件 #7）永远在执行机器上生效；控制台不执行任何批次工作
+5. **开发与批准都不得依赖控制台在线**（§0 / §3.3）——控制台只是同一把私钥的另一个持有者，
+   不是批准权的来源。任何把「控制台可达」变成前提的改动，先改这条红线再说
 
 ---
 
@@ -212,4 +244,4 @@ python3 console/server.py --config console/console.config.json --host 0.0.0.0 --
 | 2026-07-25 | 初版（v1.3）：闸门契约 `pending_gate` + 自我盖章 guard + 人类批准 CLI + 自托管控制台（观测面 + 人闸门 UI） | 用户三项裁决；P3/P4 设计已定未实装 |
 | 2026-07-25 | v1.3.1：`decision` Ed25519 验签模式（§3.2）——信任从传输路径移到内容本身，中继通道的前提 | 实测 6 项；跨语言（Node × openssl）一致性已验 |
 | 2026-07-25 | v1.3.2：通道 B 实装 —— §2 改写为两条通道；§4 补中继行与契约边界；§5 说明 push 权限只在通道 A 需要 | tokenizer 工程按本契约接入；本机整栈 + 生产各跑通一次完整往返 |
-| 2026-07-25 | 记录已知缺陷：验签模式下 `approve-gate.sh` 写无签名 decision 且谎报成功（§3.2 注） | 生产演练中实测复现；修法待用户裁决 |
+| 2026-07-25 | v1.3.3：`approve-gate.sh` 支持本机签名（`--key` / 钥匙串），新增 §0 与 §3.3、红线第 5 条 —— 本机批准与开发一律不依赖控制台 | 用户裁决：控制台只是辅助工具；修掉 v1.3.2 记录的验签模式缺陷 |
