@@ -162,73 +162,26 @@
 
 ---
 
-## [2026-07-26] Planner/Generator（tokenizer BL-FWDRIFT）— 来源：harness 全链路在 tokenizer 自身上的首次实跑
+<!-- 2026-07-26/27: 上述 6 条中 5 条已随 v1.4.1~v1.4.4 落地并写入 CHANGELOG：
+     #1 dispatch-run 阻塞式 → §3.3 明写「必须后台运行 + 轮询」（--detach 未实现，留待需要时）
+     #2 契约与产物 schema 不同源 → §3.3 补两份可直接复制的合法信封样例
+     #3 §3.3 缺信封样例 → 同上
+     #4 装 harness 前先管住「push = 部署」→ 见下方保留条目（尚未做成机件，仍待确认）
+     #5 worktree 无 node_modules → 沙箱注入 HARNESS_MAIN_REPO（v1.4.4）+ §5.1 明写「不保证对方能跑 L1」
+     #6 四道锁不含文件系统隔离 → §5.1 新增「这四道锁**不**保证什么」小节
+     另有三处只有真派活才撞得出的缺陷已修：v1.4.1 超时误判 / v1.4.2 generator 无 deliverable 契约 /
+     v1.4.3 产物路径与提交能力 + 诚实反受罚。 -->
 
-**背景：** 把 harness 装进 tokenizer（控制台自己），跑一个真实批次走完 plan→build→verify(异厂商 fan-out)→闸门。
-以下四条是这一趟**在真实使用中撞出来的**，不是设想。
+## [2026-07-26] Planner（tokenizer）— 来源：给已有项目装 harness 时的副作用
 
-### 1. 🔴 `dispatch-run.sh` 是阻塞式，而调用方的前台超时通常远短于 `timeout_s`
+### 装 harness 前必须先管住「push = 部署」的项目（**仍待确认**）
 
-派 Kimi 时 descriptor 写的是 `timeout_s: 1800`，但编排者（Claude Code 的 Bash 工具）10 分钟就超时
-并 SIGTERM，**留下孤儿 worktree**；再派同一个 task_id 会被幂等守门拒（这一层是对的），于是必须
-人工 `git worktree remove --force` + `prune` 才能重来。
+tokenizer 的 `deploy-vps.yml` 与 grandtianfu 的 `deploy.yml` 都是 `on: push branches:[main]`
+且无 paths 过滤。装上 harness 后状态机每推进一个阶段就提交一次 `progress.json`——
+**每一次状态推进都会重建镜像并部署生产**。两个项目都是撞上了才发现（joyce 的一次账本提交
+已经白跑过一次镜像构建）。
 
-**提案：** ① `dispatch-mode.md` 明写「local-cli 派活必须后台运行 + 轮询，不要在会超时的前台里等」；
-② `dispatch-run.sh` 加 `--detach`：写完 run-meta 立即返回，终态由后续 `receipt` 判定；
-③ 被 SIGTERM 时 trap 清理 worktree（现在只在正常收敛路径清理）。
-
-### 2. 契约文本与产物 schema 不同源，靠人手抄必然漂
-
-信封的 `deliverable.schema` 指向 `verdict-artifact.schema.json`，但**对方看到的产物格式描述是
-`contract.task` 里的自由文本**——我第一版手写的形状（`{batch, verdict, features[]}`）与 schema 实际要求
-（`{batch_id, fix_round, created_at, verdicts[{feature_id,result,evidence,steps_to_reproduce}]}`）对不上。
-不是被校验器抓到，而是我自己回头核对才发现；真派出去的话，对方会认真写出一份**必然被机械拒收**的产物。
-
-**提案：** `dispatch-run.sh` 在派活前把 `deliverable.schema` 的**内容内联进信封**（如
-`contract.deliverable_schema_inline`），让对方不必猜也不必读仓库；或在 `validate-dispatch.sh envelope`
-增加一条：`contract.task` 必须包含 schema 的 required 字段名，否则拒。
-
-### 3. `dispatch-mode.md` 缺一份可直接复制的**合法信封样例**
-
-信封必填字段（`task_id` / `contract_version` / `deliverable.artifact` + `.schema`）我是靠校验器连报
-8 条错误反推出来的。文档 §3.3 只讲了设计意图，没给完整样例。
-
-**提案：** §3.3 补一份 evaluator 与 generator 各一的完整信封 JSON，且与 schema 一起做 CI 校验，防漂移。
-
-### 4. 🔴 装 harness 前必须先管住「push = 部署」的项目
-
-tokenizer 的 `deploy-vps.yml` 是 `on: push branches:[main]` 无 paths 过滤。装上 harness 后状态机
-每推进一个阶段就提交一次 `progress.json`——**每一次状态推进都会重建镜像并部署生产**。
-grandtianfu 也是同样形态（它自己的 memory 里写着「push main = 部署生产」）。
-
-**提案：** `bootstrap.sh` / `harness.sh init` 完成后**主动检测** `.github/workflows/*` 是否存在
-`on: push: branches:[main]` 且缺少 paths 过滤，命中则打印一段红字警告与建议的 `paths-ignore` 清单
-（`progress.json` / `features.json` / `.auto-memory/**` / `framework/**` / `.claude/**` / `harness.*` / `*.md`）。
-这条不做，装 harness 本身就会给项目引入一个持续烧钱的副作用。
-
-### 5. 🔴 一次性 worktree 里**没有 node_modules**，外部 evaluator 根本跑不了 L1
-
-实跑现场：Kimi 报 `ERR_MODULE_NOT_FOUND: Cannot find package 'vitest'`；Codex 连查三次
-`ls -ld node_modules` 后发现 worktree 里是空的，转头去看主仓的 `node_modules`。
-`git worktree add` 只给源码，不给依赖——而验收契约要求「自己跑 npm run test」。
-这不是某一家 CLI 的问题，是**所有 JS/TS 项目派外部验收都会撞上**的结构性缺口。
-
-三条路，各有代价，需要裁决：
-- **(a) 把主仓 node_modules 软链进 worktree**：最快，但等于给外部 CLI 一条写进主仓的通道
-  （四道锁里没有文件系统隔离，见第 6 条），与「主仓零污染」相悖
-- **(b) 契约里声明先 `npm ci`**：干净，但沙箱 HOME 是专用空目录 → npm 缓存为空 → 首次要联网
-  且耗时数分钟，`timeout_s` 得相应放大；离线机器直接失败
-- **(c) 派活前由编排者在 worktree 里预装依赖**：破坏「一次性」的纯度，但对方拿到的是可跑的环境
-- 折中：给 sandbox 增加 `env_set: {"npm_config_cache": "~/.harness-sandbox/npm-cache"}` 这类
-  **共享只读缓存**，让 (b) 的首次代价只付一次
-
-### 6. 机件 #7 的四道锁**不含文件系统隔离**——文档应当明写这条边界
-
-四道锁是：env 白名单 · 独立 worktree（cwd）· 禁 push · wall-clock 封顶。**没有一条阻止外部 CLI
-读写 worktree 之外的路径**。实跑中 Codex 就去 `ls` 了主仓的 `node_modules`（只读，无害，但证明边界不存在）。
-Codex 有厂商自带的 `-s workspace-write` 作为第二道防线；**Kimi 在非交互模式下没有任何权限层**
-（`dispatch-mode.md` §5.2 已记录这一点，但没把「因此外部 CLI 可以读写主仓」这个推论说出来）。
-
-**提案：** §5.1 的四道锁表后补一段「这四道锁**不**保证什么」：不是文件系统沙箱、不阻止读主仓、
-不阻止写 worktree 之外（Kimi 尤其）。真要文件系统隔离得靠 OS 层（macOS `sandbox-exec`、Linux
-bwrap/容器），那是另一档成本，当前设计是**用产物 schema 与回流校验兜底，而不是用隔离兜底**。
+**提案：** `harness.sh init` / `adopt` 完成后主动扫 `.github/workflows/*`，命中
+「push:main 且无 paths 过滤」就打印红字警告与建议的 `paths-ignore` 清单
+（`progress.json` / `features.json` / `.auto-memory/**` / `framework/**` / `.claude/**` /
+`harness.*` / 角色 md）。这条不做，装 harness 本身就给项目引入一个持续烧钱的副作用。
