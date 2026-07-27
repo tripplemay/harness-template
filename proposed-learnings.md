@@ -172,16 +172,6 @@
      另有三处只有真派活才撞得出的缺陷已修：v1.4.1 超时误判 / v1.4.2 generator 无 deliverable 契约 /
      v1.4.3 产物路径与提交能力 + 诚实反受罚。 -->
 
-## [2026-07-26] Planner（tokenizer）— 来源：给已有项目装 harness 时的副作用
-
-### 装 harness 前必须先管住「push = 部署」的项目（**仍待确认**）
-
-tokenizer 的 `deploy-vps.yml` 与 grandtianfu 的 `deploy.yml` 都是 `on: push branches:[main]`
-且无 paths 过滤。装上 harness 后状态机每推进一个阶段就提交一次 `progress.json`——
-**每一次状态推进都会重建镜像并部署生产**。两个项目都是撞上了才发现（joyce 的一次账本提交
-已经白跑过一次镜像构建）。
-
-**提案：** `harness.sh init` / `adopt` 完成后主动扫 `.github/workflows/*`，命中
-「push:main 且无 paths 过滤」就打印红字警告与建议的 `paths-ignore` 清单
-（`progress.json` / `features.json` / `.auto-memory/**` / `framework/**` / `.claude/**` /
-`harness.*` / 角色 md）。这条不做，装 harness 本身就给项目引入一个持续烧钱的副作用。
+<!-- 2026-07-27: 最后两条已随 v1.4.5 落地（init/adopt 的部署触发自检 + a2a runner 的
+     pidfile/--stop/--idle-exit），提案区清空。本轮 dispatch 验证共沉淀 8 条，
+     全部闭环于 v1.4.1 ~ v1.4.5。 -->
