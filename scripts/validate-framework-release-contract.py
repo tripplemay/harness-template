@@ -15,7 +15,7 @@ from typing import Any
 SEMVER_RE = re.compile(r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$")
 ISO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 CHANGELOG_V1_HEADER_RE = re.compile(
-    r"^## v(?P<version>1\.[^\s—]*)(?P<rest>.*)$", re.MULTILINE
+    r"^## v(?P<version>1(?!\d)(?:\.[^\s—]*)?)(?P<rest>.*)$", re.MULTILINE
 )
 CHANGELOG_DATE_RE = re.compile(
     r"^\s+—\s+(?P<released_on>\d{4}-\d{2}-\d{2})(?:\s|$|[（(])"

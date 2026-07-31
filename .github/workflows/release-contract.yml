@@ -1,17 +1,7 @@
 name: Release Contract
 
 on:
-  pull_request:
-    paths:
-      - VERSION
-      - CHANGELOG.md
-      - harness/framework-releases.json
-      - harness/framework-versioning.md
-      - scripts/validate-framework-release-contract.py
-      - tests/test-framework-release-contract.py
-      - templates/claude/harness.sh
-      - bootstrap.sh
-      - .github/workflows/release-contract.yml
+  pull_request: {}
   push:
     branches: [main]
     paths:
