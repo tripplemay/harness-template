@@ -48,6 +48,7 @@ V2_REQUIRED_MANAGED = (
     (Path("templates/claude/dispatch/transports/a2a-client.py"), Path(".claude/dispatch/transports/a2a-client.py")),
     (Path("templates/claude/dispatch/transports/a2a-runner.py"), Path(".claude/dispatch/transports/a2a-runner.py")),
     (Path("templates/claude/dispatch/transports/adapters/codex.json"), Path(".claude/dispatch/transports/adapters/codex.json")),
+    (Path("templates/claude/dispatch/transports/adapters/claude-code.json"), Path(".claude/dispatch/transports/adapters/claude-code.json")),
     (Path("templates/claude/dispatch/transports/adapters/kimi.json"), Path(".claude/dispatch/transports/adapters/kimi.json")),
     (Path("templates/claude/skills/autodrive/SKILL.md"), Path(".claude/skills/autodrive/SKILL.md")),
     (Path("templates/claude/skills/build/SKILL.md"), Path(".claude/skills/build/SKILL.md")),
