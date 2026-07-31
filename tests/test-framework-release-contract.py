@@ -16,6 +16,46 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 VALIDATOR = REPO_ROOT / "scripts" / "validate-framework-release-contract.py"
 MANIFEST_RELATIVE_PATH = Path("framework/harness/framework-releases.json")
+CURRENT_VERSION = (REPO_ROOT / "VERSION").read_text(encoding="utf-8").strip()
+
+# These paths are the v2 control-plane minimum.  Keep this list deliberately
+# small and capability-focused: new CLI adapters are discovered from the
+# managed registry/catalog rather than being added to a frontend allow-list.
+V2_REQUIRED_MANAGED = (
+    (Path("templates/claude/agents/planner-proposal.md"), Path(".claude/agents/planner-proposal.md")),
+    (Path("templates/claude/autonomous/gate-arbiter.workflow.js"), Path(".claude/autonomous/gate-arbiter.workflow.js")),
+    (Path("templates/claude/console/mode-intent.schema.json"), Path(".claude/console/mode-intent.schema.json")),
+    (Path("templates/claude/console/consume-mode-intent.sh"), Path(".claude/console/consume-mode-intent.sh")),
+    (Path("templates/claude/console/resolve-mode-bindings.sh"), Path(".claude/console/resolve-mode-bindings.sh")),
+    (Path("templates/claude/console/validate-mode-intent.sh"), Path(".claude/console/validate-mode-intent.sh")),
+    (Path("templates/claude/dispatch/agents-registry.schema.json"), Path(".claude/dispatch/agents-registry.schema.json")),
+    (Path("templates/claude/dispatch/dispatch-envelope.schema.json"), Path(".claude/dispatch/dispatch-envelope.schema.json")),
+    (Path("templates/claude/dispatch/dispatch-run.sh"), Path(".claude/dispatch/dispatch-run.sh")),
+    (Path("templates/claude/dispatch/dispatch_common.py"), Path(".claude/dispatch/dispatch_common.py")),
+    (Path("templates/claude/dispatch/tool-catalog.py"), Path(".claude/dispatch/tool-catalog.py")),
+    (Path("templates/claude/dispatch/resolve-active-mode-role.sh"), Path(".claude/dispatch/resolve-active-mode-role.sh")),
+    (Path("templates/claude/dispatch/validate-resolved-mode-bindings.sh"), Path(".claude/dispatch/validate-resolved-mode-bindings.sh")),
+    (Path("templates/claude/dispatch/sandbox-profile.sh"), Path(".claude/dispatch/sandbox-profile.sh")),
+    (Path("templates/claude/dispatch/planner-proposal.schema.json"), Path(".claude/dispatch/planner-proposal.schema.json")),
+    (Path("templates/claude/dispatch/prepare-planner-proposal.sh"), Path(".claude/dispatch/prepare-planner-proposal.sh")),
+    (Path("templates/claude/dispatch/dispatch-planner-proposal.sh"), Path(".claude/dispatch/dispatch-planner-proposal.sh")),
+    (Path("templates/claude/dispatch/accept-planner-proposal.sh"), Path(".claude/dispatch/accept-planner-proposal.sh")),
+    (Path("templates/claude/dispatch/validate-planner-proposal.sh"), Path(".claude/dispatch/validate-planner-proposal.sh")),
+    (Path("templates/claude/dispatch/generator-handoff.schema.json"), Path(".claude/dispatch/generator-handoff.schema.json")),
+    (Path("templates/claude/dispatch/dispatch-generator-handoff.sh"), Path(".claude/dispatch/dispatch-generator-handoff.sh")),
+    (Path("templates/claude/dispatch/accept-generator-handoff.sh"), Path(".claude/dispatch/accept-generator-handoff.sh")),
+    (Path("templates/claude/dispatch/validate-generator-handoff.sh"), Path(".claude/dispatch/validate-generator-handoff.sh")),
+    (Path("templates/claude/dispatch/transports/a2a-client.py"), Path(".claude/dispatch/transports/a2a-client.py")),
+    (Path("templates/claude/dispatch/transports/a2a-runner.py"), Path(".claude/dispatch/transports/a2a-runner.py")),
+    (Path("templates/claude/dispatch/transports/adapters/codex.json"), Path(".claude/dispatch/transports/adapters/codex.json")),
+    (Path("templates/claude/dispatch/transports/adapters/kimi.json"), Path(".claude/dispatch/transports/adapters/kimi.json")),
+    (Path("templates/claude/skills/autodrive/SKILL.md"), Path(".claude/skills/autodrive/SKILL.md")),
+    (Path("templates/claude/skills/build/SKILL.md"), Path(".claude/skills/build/SKILL.md")),
+    (Path("templates/claude/skills/plan/SKILL.md"), Path(".claude/skills/plan/SKILL.md")),
+    (Path("templates/claude/skills/verify/SKILL.md"), Path(".claude/skills/verify/SKILL.md")),
+    (Path("harness/dispatch-mode.md"), Path("framework/harness/dispatch-mode.md")),
+    (Path("harness/harness-rules.md"), Path("harness-rules.md")),
+)
 
 
 def copy_source(destination: Path) -> None:
@@ -39,13 +79,21 @@ def downgrade_source_to_v152(root: Path) -> None:
 
     changelog_path = root / "CHANGELOG.md"
     changelog = changelog_path.read_text(encoding="utf-8")
-    before, marker, remainder = changelog.partition("## v1.5.3 — 2026-07-30")
-    if not marker:
-        raise AssertionError("fixture source is missing the v1.5.3 changelog entry")
-    _entry, next_marker, after = remainder.partition("## v1.5.2 — 2026-07-29")
-    if not next_marker:
+    marker = "## v1.5.2 — 2026-07-29"
+    _before, separator, historical = changelog.partition(marker)
+    if not separator:
         raise AssertionError("fixture source is missing the v1.5.2 changelog entry")
-    changelog_path.write_text(before + next_marker + after, encoding="utf-8")
+    changelog_path.write_text(historical, encoding="utf-8")
+
+    # Mimic a v1.5.2 project: the pre-v2 lock must not already contain the
+    # v2 runtime files, so sync proves that recursive template management
+    # carries them. Keep root harness documents available for the legacy
+    # adopt fixture below.
+    for source_relative, _destination_relative in V2_REQUIRED_MANAGED:
+        if source_relative.parts[:2] == ("templates", "claude"):
+            candidate = root / source_relative
+            if candidate.exists():
+                candidate.unlink()
 
 
 class FrameworkReleaseContractTest(unittest.TestCase):
@@ -203,6 +251,21 @@ class FrameworkReleaseDistributionTest(unittest.TestCase):
         config = json.loads((project / "harness.json").read_text(encoding="utf-8"))
         self.assertEqual(config["framework"]["version"], expected_version)
 
+    def assert_v2_control_plane_is_managed(self, source: Path, project: Path) -> None:
+        lock = json.loads((project / "harness.lock").read_text(encoding="utf-8"))
+        for source_relative, destination_relative in V2_REQUIRED_MANAGED:
+            source_path = source / source_relative
+            destination_path = project / destination_relative
+            self.assertTrue(destination_path.is_file(), destination_relative)
+            self.assertEqual(destination_path.read_bytes(), source_path.read_bytes())
+
+            metadata = lock["managed"][destination_relative.as_posix()]
+            self.assertEqual(metadata["src"], source_relative.as_posix())
+            self.assertEqual(metadata["sha256"], sha256(destination_path))
+            self.assertEqual(metadata["upstream"], sha256(source_path))
+            if source_path.suffix in {".sh", ".py"}:
+                self.assertNotEqual(destination_path.stat().st_mode & 0o111, 0)
+
     def test_init_sync_and_adopt_then_sync_manage_the_manifest(self) -> None:
         with tempfile.TemporaryDirectory(prefix="release-distribution-") as raw_temporary:
             temporary = Path(raw_temporary)
@@ -219,7 +282,8 @@ class FrameworkReleaseDistributionTest(unittest.TestCase):
                 new_source,
                 fresh_project,
             )
-            self.assert_manifest_is_managed(new_source, fresh_project, "1.5.3")
+            self.assert_manifest_is_managed(new_source, fresh_project, CURRENT_VERSION)
+            self.assert_v2_control_plane_is_managed(new_source, fresh_project)
 
             project = temporary / "legacy-sync-project"
             self.run_harness(
@@ -235,7 +299,8 @@ class FrameworkReleaseDistributionTest(unittest.TestCase):
             self.run_harness(
                 project / ".claude" / "harness.sh", "sync", new_source, project
             )
-            self.assert_manifest_is_managed(new_source, project, "1.5.3")
+            self.assert_manifest_is_managed(new_source, project, CURRENT_VERSION)
+            self.assert_v2_control_plane_is_managed(new_source, project)
 
             adopted_project = temporary / "adopt-project"
             adopted_project.mkdir()
@@ -264,7 +329,8 @@ class FrameworkReleaseDistributionTest(unittest.TestCase):
                 new_source,
                 adopted_project,
             )
-            self.assert_manifest_is_managed(new_source, adopted_project, "1.5.3")
+            self.assert_manifest_is_managed(new_source, adopted_project, CURRENT_VERSION)
+            self.assert_v2_control_plane_is_managed(new_source, adopted_project)
 
     def test_nested_and_flat_bootstrap_manage_the_manifest(self) -> None:
         with tempfile.TemporaryDirectory(prefix="release-bootstrap-") as raw_temporary:
@@ -283,7 +349,8 @@ class FrameworkReleaseDistributionTest(unittest.TestCase):
                 text=True,
             )
             self.assertEqual(nested.returncode, 0, nested.stdout + nested.stderr)
-            self.assert_manifest_is_managed(source, nested_project, "1.5.3")
+            self.assert_manifest_is_managed(source, nested_project, CURRENT_VERSION)
+            self.assert_v2_control_plane_is_managed(source, nested_project)
 
             flat_project = temporary / "flat-project"
             copy_source(flat_project)
@@ -295,7 +362,8 @@ class FrameworkReleaseDistributionTest(unittest.TestCase):
                 text=True,
             )
             self.assertEqual(flat.returncode, 0, flat.stdout + flat.stderr)
-            self.assert_manifest_is_managed(source, flat_project, "1.5.3")
+            self.assert_manifest_is_managed(source, flat_project, CURRENT_VERSION)
+            self.assert_v2_control_plane_is_managed(source, flat_project)
 
 
 if __name__ == "__main__":
