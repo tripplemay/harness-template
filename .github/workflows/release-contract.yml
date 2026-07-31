@@ -1,0 +1,37 @@
+name: Release Contract
+
+on:
+  pull_request:
+    paths:
+      - VERSION
+      - CHANGELOG.md
+      - harness/framework-releases.json
+      - harness/framework-versioning.md
+      - scripts/validate-framework-release-contract.py
+      - tests/test-framework-release-contract.py
+      - templates/claude/harness.sh
+      - bootstrap.sh
+      - .github/workflows/release-contract.yml
+  push:
+    branches: [main]
+    paths:
+      - VERSION
+      - CHANGELOG.md
+      - harness/framework-releases.json
+      - harness/framework-versioning.md
+      - scripts/validate-framework-release-contract.py
+      - tests/test-framework-release-contract.py
+      - templates/claude/harness.sh
+      - bootstrap.sh
+      - .github/workflows/release-contract.yml
+
+jobs:
+  release-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python3 scripts/validate-framework-release-contract.py
+      - run: python3 tests/test-framework-release-contract.py
