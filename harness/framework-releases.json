@@ -26,6 +26,7 @@
     { "version": "1.5.3", "released_on": "2026-07-30" },
     { "version": "1.6.0", "released_on": "2026-07-31" },
     { "version": "1.6.1", "released_on": "2026-07-31" },
-    { "version": "1.6.2", "released_on": "2026-07-31" }
+    { "version": "1.6.2", "released_on": "2026-07-31" },
+    { "version": "1.6.3", "released_on": "2026-08-02" }
   ]
 }

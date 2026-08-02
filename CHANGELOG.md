@@ -5,6 +5,50 @@
 
 ---
 
+## v1.6.3 — 2026-08-02（strict vm-v1 Kimi bridge provider 与回执闭环）
+
+**来源：** tokenizer `BL-NATIVE-SUBAGENT-BRIDGES` 修复批次。
+
+- 引入 Framework-owned `vm-v1` provider：它固定校验 plain Lima VZ profile、无 host mount / proxy /
+  port forward / container runtime，按 content-addressed runner、CLI bundle、broker policy 与 VM image 启动
+  独立 worker principal。项目 registry、PATH、设备报告和项目内镜像均不能选择或替换 provider。
+- external same-session bridge 只在 installed app 与项目镜像中的受管 dispatch runtime 关键文件逐字节一致、provider 对当前主机做出
+  新鲜 nonce-bound attestation 时出现在 catalog；launch 再次校验相同 contract/provenance。Kimi ACP
+  bridge 将 Planner 映射为 `coder`、Generator 映射为 `coder`、Evaluator 映射为 `explore`；
+  future CLI 只要提供受验证 manifest、已发布 protocol，并在 provider 的新鲜 catalog attestation 中获得精确
+  `{tool, protocol}` route，便可按同一规则加入。当前 `vm-v1` 只发布它实际可运行的 Kimi ACP；协议兼容但没有
+  provider bundle/credential driver 的 CLI 不会形成可签发 candidate。
+- catalog attestation 固定为 300 秒的短时发现证明；launch proof 在私有 copy-in 完成后签发，并使用覆盖最长
+  worker turn、copy-out、broker request 与回执整理余量的 390 秒受限生命周期，避免合法的最长执行在返回时因证明
+  过期被拒绝。
+- root systemd supervisor 通过私有 pipe 接收 Kimi bridge receipt，并在 root-only receipt 目录落盘；它将
+  vendor CLI 精确降权为 `harnessvm`，回收已验证的 bridge 进程组，并由 systemd job cgroup 完成整棵 job
+  的生命周期收束。worker 使用 copy-in/copy-out、brokered
+  credential/network 与受限 supervisor pipe；不挂载 Coordinator 文件、HOME、Kimi state 或原始凭据。Generator 回传只接受普通文件、受控 artifact 与
+  allowlisted source delta，拒绝控制面、链接、非规范权限和 Git 属性/CI/hook 路径变更。
+- 新增 source-only 的受控 Kimi L2 Generator 探测：只能由显式的外部人工确认和 `/usr/bin/python3 -I`
+  启动，固定合成输入；它在同一受保护 source-root fd 下固定 provider、bridge 与三个 runner，再将它们以
+  私有、哈希校验的 stage 传给 VM。探测不读取项目状态、registry 或批准闸门，也不发布 catalog route。其
+  evidence 同时绑定 provider source、runner、bridge、CLI bundle、目标与合成 envelope 的摘要。在打开
+  broker 前，它先以同一 root systemd profile 运行无网络的 `setpriv` 预检，证明 vendor child 的 UID/GID、
+  supplementary groups、Inh/Perm/Eff/Amb capabilities 与 `NoNewPrivs` 均符合固定降权契约。
+- Lima host command 只接收 passwd 派生的固定 `HOME`、PATH 与 locale，既满足 Lima 的 profile lookup，又不继承
+  Coordinator 或 caller 环境。
+- broker 只在 Kimi OAuth access token 的剩余时长足以覆盖最长 vendor turn、copy-out、上游请求与回收余量时
+  才建立 lease，避免短时令牌在受控运行中途失效；刷新仍限定在可信宿主的供应商登录链路内，refresh token
+  不会进入 VM、回执、日志或子进程环境。
+- 针对 hardened guest 中 Python `Popen(user=...)` 无法稳定执行 Kimi ELF 的实际行为，Kimi bridge 改为固定
+  非符号链接 `/usr/bin/setpriv` 在 guest 内完成身份切换；它清空 supplementary groups、Inh/Amb capabilities
+  并设置 `NoNewPrivs`，而 systemd cgroup 继续承担完整 job tree 的回收。
+- 新增 provider-attested Generator receipt consumer：复验 active subagent route、provider run layout、
+  attestation contract/nonce/artifact digest 及签发时效；过期、未来签发、漂移或缺失的证明不能把 handoff
+  推进为 `COMPLETED`。现有 local-cli 和 Codex local-cli 不被升级为 external bridge。
+- 回传验收以重新解析的 active role/target 为准，不能由 `run-meta.transport` 自行降级：external
+  `subagent` 必须走 provider receipt 校验，伪造的 `local-cli` 或不匹配的 agent/transport 一律拒绝。该校验器
+  与 provider runtime 一并纳入 installed app / project mirror 契约。
+
+---
+
 ## v1.6.2 — 2026-07-31（严格同会话桥接 fail-closed 与执行语义防漂移）
 
 **来源：** tokenizer `BL-NATIVE-SUBAGENT-BRIDGES` dispatch 演练。

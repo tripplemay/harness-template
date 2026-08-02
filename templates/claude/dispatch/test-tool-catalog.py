@@ -57,7 +57,16 @@ def subagent_bridge(
     protocol_kind: str = "acp-native-agent/v1",
     command: list[str] | None = None,
     personas: dict[str, str] | None = None,
+    native_agent_types: dict[str, str] | None = None,
 ) -> dict:
+    selected_personas = personas or {
+        "planner": "planner-proposal",
+        "evaluator": "evaluator",
+    }
+    selected_native_types = native_agent_types or {
+        role: {"planner": "plan", "generator": "coder", "evaluator": "explore"}[role]
+        for role in selected_personas
+    }
     return {
         "id": bridge_id,
         "_verified": verified,
@@ -69,10 +78,8 @@ def subagent_bridge(
             "request_delivery": "stdin",
             "response_format": "json",
         },
-        "personas": personas or {
-            "planner": "planner-proposal",
-            "evaluator": "evaluator",
-        },
+        "personas": selected_personas,
+        "native_agent_types": selected_native_types,
     }
 
 
@@ -167,22 +174,30 @@ class ToolCatalogTests(unittest.TestCase):
             args.extend(["--target-id", target_id])
         return subprocess.run(args, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
-    def attested_strict_provider(self):
+    def attested_strict_provider(self, *, tool: str = "future-cli"):
         """A test-only stand-in for a future framework-owned VM provider."""
+        route = TOOL_CATALOG_MODULE.AttestedExternalBridgeRoute(
+            tool=tool,
+            protocol_kind="acp-native-agent/v1",
+            command=(tool, "acp"),
+            request_delivery="stdin",
+            response_format="json",
+        )
         return TOOL_CATALOG_MODULE.StrictExternalBridgeProvider(
             id="fixture-vm-provider",
             kind="vm-v1",
             contract_sha256="a" * 64,
+            supported_routes=(route,),
         )
 
-    def candidates_with_attested_strict_provider(self):
+    def candidates_with_attested_strict_provider(self, *, tool: str = "future-cli"):
         # The CLI subprocess must stay fail-closed in this release.  Patch the
         # in-process framework hook only to prove that any future provider can
         # admit a protocol-compatible new CLI declaratively.
         with mock.patch.object(
             TOOL_CATALOG_MODULE,
             "external_same_session_bridge_provider",
-            return_value=self.attested_strict_provider(),
+            return_value=self.attested_strict_provider(tool=tool),
         ):
             return TOOL_CATALOG_MODULE.candidates_from_registry(
                 self.registry, self.adapters, self.bridges
@@ -791,7 +806,7 @@ class ToolCatalogTests(unittest.TestCase):
             "home_dir": "/tmp/future-home",
             "env_allow": ["FUTURE_TOKEN"],
         })
-        self.assertEqual(target["timeout_s"], 900)
+        self.assertEqual(target["timeout_s"], TOOL_CATALOG_MODULE.VM_V1_MAX_TASK_SECONDS)
         self.assertEqual(target["bridge_id"], "future-session")
         self.assertEqual(target["bridge_strategy"], "managed-session")
         self.assertEqual(target["session_scope"], "same-session")
@@ -815,6 +830,19 @@ class ToolCatalogTests(unittest.TestCase):
             planner["execution_provenance_sha256"],
             target["execution_provenance_sha256"],
         )
+
+        # A protocol-compatible manifest is not enough. The installed provider
+        # must attest the exact CLI command it can execute.
+        kimi_only = self.candidates_with_attested_strict_provider(tool="kimi")
+        kimi_only_catalog = TOOL_CATALOG_MODULE.build_catalog(kimi_only)
+        for role in ("planner", "evaluator"):
+            self.assertNotIn(
+                ("future-cli", "subagent"),
+                {
+                    (entry["tool"], entry["invocation"])
+                    for entry in kimi_only_catalog["roles"][role]
+                },
+            )
 
     def test_verified_external_bridge_is_hidden_without_a_strict_provider(self):
         self.write_adapter("future-cli", "future")
@@ -879,6 +907,12 @@ class ToolCatalogTests(unittest.TestCase):
                     id="fixture-seatbelt-provider", kind="seatbelt-v1", contract_sha256="a" * 64
                 ),
                 "provider kind",
+            ),
+            (
+                TOOL_CATALOG_MODULE.StrictExternalBridgeProvider(
+                    id="fixture-vm-provider", kind="vm-v1", contract_sha256="a" * 64
+                ),
+                "supported routes",
             ),
         )
         for invalid, expected in cases:
@@ -1086,7 +1120,11 @@ class ToolCatalogTests(unittest.TestCase):
         manifest = json.loads(source.read_text(encoding="utf-8"))
         self.assertEqual(
             manifest["personas"],
-            {"planner": "planner-proposal", "evaluator": "evaluator"},
+            {
+                "planner": "planner-proposal",
+                "generator": "generator-restricted",
+                "evaluator": "evaluator",
+            },
         )
         self.write_adapter("codex", "codex")
         self.write_adapter("kimi", "kimi")
@@ -1127,26 +1165,21 @@ class ToolCatalogTests(unittest.TestCase):
         hidden = self.invoke("target", target_id="subagent--kimi--planner")
         self.assertEqual(hidden.returncode, 2)
 
-        candidates = self.candidates_with_attested_strict_provider()
+        candidates = self.candidates_with_attested_strict_provider(tool="kimi")
         attested_catalog = TOOL_CATALOG_MODULE.build_catalog(candidates)
-        for role in ("planner", "evaluator"):
+        for role in ("planner", "generator", "evaluator"):
             choices = {
                 (entry["tool"], entry["invocation"])
                 for entry in attested_catalog["roles"][role]
             }
             self.assertIn(("kimi", "subagent"), choices)
             self.assertNotIn(("codex", "subagent"), choices)
-        generator_choices = {
-            (entry["tool"], entry["invocation"])
-            for entry in attested_catalog["roles"]["generator"]
-        }
-        self.assertNotIn(("kimi", "subagent"), generator_choices)
-
         kimi_target = TOOL_CATALOG_MODULE.resolve_target(
             candidates, "subagent--kimi--planner"
         )
         self.assertEqual(kimi_target["bridge_protocol"]["kind"], "acp-native-agent/v1")
         self.assertEqual(kimi_target["bridge_provider_id"], "fixture-vm-provider")
+        self.assertEqual(kimi_target["native_agent_type"], "coder")
         self.assertRegex(kimi_target["adapter_execution_contract_sha256"], r"^[0-9a-f]{64}$")
         self.assertRegex(kimi_target["execution_provenance_sha256"], r"^[0-9a-f]{64}$")
 

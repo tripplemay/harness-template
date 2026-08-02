@@ -5,8 +5,10 @@ from __future__ import annotations
 
 import base64
 import datetime
+import hashlib
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -25,6 +27,19 @@ TASK = "accept-fixture-001"
 def write_json(path: Path, value: object) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(value), encoding="utf-8")
+
+
+def provider_attestation_digest(value: dict[str, object]) -> str:
+    encoded = json.dumps(
+        value,
+        ensure_ascii=True,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+    return hashlib.sha256(
+        b"harness/external-bridge-provider-attestation/1\0" + encoded
+    ).hexdigest()
 
 
 class AcceptGeneratorHandoffTest(unittest.TestCase):
@@ -301,10 +316,15 @@ class AcceptGeneratorHandoffTest(unittest.TestCase):
         )
         return registry, adapters, public_key
 
-    def invoke(self, *extra: str, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+    def invoke(
+        self,
+        *extra: str,
+        env: dict[str, str] | None = None,
+        accept: Path = ACCEPT,
+    ) -> subprocess.CompletedProcess[str]:
         return subprocess.run(
             [
-                "bash", str(ACCEPT),
+                "bash", str(accept),
                 "--handoff", str(self.handoff),
                 "--envelope", str(self.envelope),
                 "--run-meta", str(self.meta),
@@ -317,12 +337,127 @@ class AcceptGeneratorHandoffTest(unittest.TestCase):
             env={**os.environ, **(env or {})},
         )
 
+    def external_accept_dispatch_fixture(self) -> Path:
+        """Run the real accept entrypoint against a fixed external target.
+
+        Production target resolution is intentionally tied to the installed
+        app-owned provider, which tests must not replace. This isolated copy
+        retains the accept script and return-route validator verbatim while
+        standing in for the already re-verified active role/target boundary.
+        """
+        dispatch = self.root / "external-accept-dispatch"
+        dispatch.mkdir()
+        for name in (
+            "accept-generator-handoff.sh",
+            "dispatch_common.py",
+            "validate-dispatch.sh",
+            "validate-generator-handoff.sh",
+            "validate-external-bridge-receipt.py",
+            "validate-active-return-route.py",
+        ):
+            shutil.copy2(HERE / name, dispatch / name)
+        (dispatch / "resolve-active-mode-role.sh").write_text(
+            "#!/usr/bin/env bash\n"
+            "printf '%s\\n' '{\"agent_id\":\"fixture-generator\",\"tool\":\"fixture\",\"invocation\":\"subagent\",\"model_family\":\"generator\",\"priority\":1,\"execution_provenance_sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}'\n",
+            encoding="utf-8",
+        )
+        (dispatch / "resolve-active-mode-role.sh").chmod(0o755)
+        (dispatch / "tool-catalog.py").write_text(
+            "import json\n"
+            "print(json.dumps({\n"
+            "  'target_id': 'fixture-generator', 'invocation': 'subagent',\n"
+            "  'bridge_id': 'fixture-acp', 'bridge_strategy': 'session-bridge-v1',\n"
+            "  'bridge_protocol': {'kind': 'acp-native-agent/v1'},\n"
+            "  'session_scope': 'same-session'\n"
+            "}))\n",
+            encoding="utf-8",
+        )
+        return dispatch
+
+    def configure_provider_subagent_result(self) -> None:
+        """Create the exact provider-owned staging layout returned by vm-v1."""
+        state = self.root / "provider-state"
+        staging = state / "vm-v1-runs" / f"{TASK}-{'a' * 24}" / "copyout"
+        staging.parent.mkdir(parents=True)
+        self.git(self.root, "clone", "-q", str(self.repo), str(staging))
+        (staging / "src" / "generated.txt").write_text("generated\n", encoding="utf-8")
+        self.handoff = staging / "docs" / "test-reports" / f"generator-handoff-{TASK}.json"
+        write_json(
+            self.handoff,
+            {
+                "batch_id": BATCH,
+                "created_at": "2026-07-31T00:00:00Z",
+                "features": [{"feature_id": FEATURE, "files_touched": ["src/generated.txt"], "commits": []}],
+                "l1_ran": {"lint": "fixture", "typecheck": "fixture", "test": "fixture"},
+                "waiting": None,
+            },
+        )
+        attestation: dict[str, object] = {
+            "version": "harness/external-bridge-provider-attestation/1",
+            "provider_id": "harness-vm-v1",
+            "provider_kind": "vm-v1",
+            "contract_sha256": "b" * 64,
+            "phase": "launch",
+            "nonce_sha256": "c" * 64,
+            "issued_at": "2026-08-01T00:00:00Z",
+            "expires_at": "2026-08-01T00:05:00Z",
+            "image_sha256": "d" * 64,
+            "runner_sha256": "e" * 64,
+            "cli_bundle_sha256": "f" * 64,
+            "broker_policy_sha256": "0" * 64,
+            "target_provenance_sha256": "1" * 64,
+        }
+        bridge = {
+            "bridge_id": "fixture-acp",
+            "bridge_strategy": "session-bridge-v1",
+            "bridge_kind": "acp-native-agent/v1",
+            "session_scope": "same-session",
+            "session_id_sha256": "2" * 64,
+            "nonce_sha256": attestation["nonce_sha256"],
+            "child_call_id_sha256": "3" * 64,
+            "subagent_type": "coder",
+            "terminal_status": "completed",
+            "provider_launch_attestation_sha256": provider_attestation_digest(attestation),
+            "artifact_sha256": hashlib.sha256(self.handoff.read_bytes()).hexdigest(),
+            "provider_launch_attestation": attestation,
+        }
+        self.meta = state / f"run-meta-{TASK}.json"
+        write_json(
+            self.meta,
+            {
+                "task_id": TASK,
+                "agent_id": "fixture-generator",
+                "model_family": "fixture",
+                "batch": BATCH,
+                "ref": self.ref,
+                "role": "generator",
+                "deliverable": json.loads(self.envelope.read_text())["deliverable"],
+                "artifact": str(self.handoff.resolve()),
+                "envelope_path": str(self.envelope.resolve()),
+                "worktree": str(staging.resolve()),
+                "outcome": "RETURNED",
+                "exit_code": 0,
+                "duration_s": 1,
+                "transport": "subagent",
+                "bridge": bridge,
+                "source_changes": ["src/generated.txt"],
+            },
+        )
+
     def test_dry_run_validates_exact_diff_without_touching_main(self) -> None:
         result = self.invoke()
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         outcome = json.loads(result.stdout)
         self.assertEqual(outcome["state"], "READY_TO_APPLY")
         self.assertEqual(outcome["files_touched"], ["src/generated.txt"])
+        self.assertFalse((self.repo / "src" / "generated.txt").exists())
+        self.assertEqual(self.output(self.repo, "status", "--porcelain"), "")
+
+    def test_provider_subagent_handoff_requires_a_signed_active_route(self) -> None:
+        self.configure_provider_subagent_result()
+        result = self.invoke()
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        self.assertIn("re-verified active mode role", result.stderr)
         self.assertFalse((self.repo / "src" / "generated.txt").exists())
         self.assertEqual(self.output(self.repo, "status", "--porcelain"), "")
 
@@ -400,7 +535,44 @@ class AcceptGeneratorHandoffTest(unittest.TestCase):
             env={"HARNESS_OPENSSL": os.environ.get("HARNESS_OPENSSL", "/opt/homebrew/bin/openssl")},
         )
         self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
-        self.assertIn("agent_id does not match", result.stderr)
+        self.assertIn("re-verified active", result.stderr)
+        self.assertFalse((self.repo / "src" / "generated.txt").exists())
+        self.assertEqual(self.output(self.repo, "status", "--porcelain"), "")
+
+    def test_active_local_route_rejects_a_forged_subagent_return(self) -> None:
+        registry, adapters, public_key = self.enable_active_v2_generator_checkpoint()
+        self.git(self.repo, "add", "progress.json", ".agents-registry.json")
+        self.git(self.repo, "commit", "-qm", "active checkpoint")
+        meta = json.loads(self.meta.read_text(encoding="utf-8"))
+        meta["transport"] = "subagent"
+        self.meta.write_text(json.dumps(meta), encoding="utf-8")
+        result = self.invoke(
+            "--progress", str(self.repo / "progress.json"),
+            "--registry", str(registry),
+            "--adapters", str(adapters),
+            "--pub", str(public_key),
+            env={"HARNESS_OPENSSL": os.environ.get("HARNESS_OPENSSL", "/opt/homebrew/bin/openssl")},
+        )
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        self.assertIn("transport does not match", result.stderr)
+        self.assertFalse((self.repo / "src" / "generated.txt").exists())
+        self.assertEqual(self.output(self.repo, "status", "--porcelain"), "")
+
+    def test_active_external_route_rejects_a_forged_local_cli_return(self) -> None:
+        registry, adapters, public_key = self.enable_active_v2_generator_checkpoint()
+        self.git(self.repo, "add", "progress.json", ".agents-registry.json")
+        self.git(self.repo, "commit", "-qm", "active checkpoint")
+        dispatch = self.external_accept_dispatch_fixture()
+        result = self.invoke(
+            "--progress", str(self.repo / "progress.json"),
+            "--registry", str(registry),
+            "--adapters", str(adapters),
+            "--pub", str(public_key),
+            env={"HARNESS_OPENSSL": os.environ.get("HARNESS_OPENSSL", "/opt/homebrew/bin/openssl")},
+            accept=dispatch / "accept-generator-handoff.sh",
+        )
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        self.assertIn("transport does not match", result.stderr)
         self.assertFalse((self.repo / "src" / "generated.txt").exists())
         self.assertEqual(self.output(self.repo, "status", "--porcelain"), "")
 
