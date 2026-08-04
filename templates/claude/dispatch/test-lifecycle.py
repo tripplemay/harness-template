@@ -323,7 +323,9 @@ class DeadlineAndPreflightTests(unittest.TestCase):
 
     def test_execution_entries_pin_registry_to_project_root_before_creating_paths(self):
         registry, envelope, adapters = self._sandbox_inputs(self.repo)
-        outside = self.root / "outside-registry.json"
+        outside_dir = self.root / "outside"
+        outside_dir.mkdir()
+        outside = outside_dir / ".agents-registry.json"
         outside.write_text(registry.read_text(encoding="utf-8"), encoding="utf-8")
 
         def run_entry(entry, requested_registry, suffix):
@@ -360,6 +362,85 @@ class DeadlineAndPreflightTests(unittest.TestCase):
         for entry in ("sandbox", "dispatch"):
             with self.subTest(entry=entry, case="symlink"):
                 run_entry(entry, registry, "symlink")
+
+    def test_post_tool_hook_pins_registry_to_project_root_and_rejects_links(self):
+        """The immediate configuration hook must match runtime registry pinning."""
+        registry = self.repo / ".agents-registry.json"
+        registry.write_text(
+            json.dumps(
+                {
+                    "version": "dispatch/1",
+                    "agents": [
+                        {
+                            "id": "fixture-planner",
+                            "roles": ["planner"],
+                            "transport": "subagent",
+                            "agent_type": "planner-proposal",
+                            "model_family": "fixture",
+                            "constraints": {"write_src": False, "push": False},
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        progress = self.repo / "progress.json"
+        progress.write_text("{}\n", encoding="utf-8")
+
+        def hook(path):
+            return subprocess.run(
+                ["bash", str(VALIDATOR), "hook"],
+                cwd=self.repo,
+                input=json.dumps({"tool_input": {"file_path": str(path)}}),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+
+        self.assertEqual(hook(registry).returncode, 0)
+        self.assertEqual(hook(progress).returncode, 0)
+
+        progress.write_text(
+            json.dumps({"role_assignments": {"generator": "fixture-planner"}}),
+            encoding="utf-8",
+        )
+        incompatible_assignment = hook(registry)
+        self.assertEqual(incompatible_assignment.returncode, 2)
+        self.assertIn("不含 generator", incompatible_assignment.stdout)
+
+        progress.write_text(
+            json.dumps({"mode_intent": {"signed_intent": {}, "resolution": {}}}),
+            encoding="utf-8",
+        )
+        malformed_checkpoint = hook(registry)
+        self.assertEqual(malformed_checkpoint.returncode, 2)
+        self.assertIn("v2 mode_intent checkpoint", malformed_checkpoint.stderr)
+
+        progress.write_text("{}\n", encoding="utf-8")
+
+        outside_dir = self.root / "hook-outside"
+        outside_dir.mkdir()
+        outside = outside_dir / ".agents-registry.json"
+        outside.write_text(registry.read_text(encoding="utf-8"), encoding="utf-8")
+        outside_result = hook(outside)
+        self.assertEqual(outside_result.returncode, 2)
+        self.assertIn("project-root", outside_result.stderr)
+
+        registry.unlink()
+        registry.symlink_to(outside)
+        for path in (registry, progress):
+            with self.subTest(path=path.name, link="valid"):
+                result = hook(path)
+                self.assertEqual(result.returncode, 2)
+                self.assertIn("symbolic link", result.stderr)
+
+        registry.unlink()
+        registry.symlink_to(self.root / "missing-registry.json")
+        for path in (registry, progress):
+            with self.subTest(path=path.name, link="dangling"):
+                result = hook(path)
+                self.assertEqual(result.returncode, 2)
+                self.assertIn("symbolic link", result.stderr)
 
     def test_direct_sandbox_enforces_expected_provenance_before_creating_paths(self):
         registry, envelope, adapters = self._sandbox_inputs(self.repo)

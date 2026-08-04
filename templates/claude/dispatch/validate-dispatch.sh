@@ -56,9 +56,41 @@ import json,sys
 try: print(json.load(sys.stdin).get('tool_input',{}).get('file_path',''))
 except Exception: pass
 ")
+  # Registry contents choose transports and executable metadata.  A hook event
+  # must not make an arbitrary same-named file (or a symlink) an authority that
+  # the execution entries would reject later.  Keep this early configuration
+  # guard on the exact same project-root pinning primitive as dispatch-run.
+  PROJECT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || {
+    echo "[dispatch] ⛔ PostToolUse dispatch hook 必须在 git 项目内运行" >&2
+    exit 2
+  }
+  pin_hook_registry() {
+    python3 "$DISPATCH_DIR/dispatch_common.py" project-registry \
+      --project-root "$PROJECT_ROOT" --registry "$1"
+  }
+  validate_hook_state() {
+    local registry="$1"
+    "$0" registry "$registry" --progress "$PROJECT_ROOT/progress.json" || return 2
+    "$0" assignments "$PROJECT_ROOT/progress.json" "$registry" || return 2
+    "$DISPATCH_DIR/validate-resolved-mode-bindings.sh" \
+      --progress "$PROJECT_ROOT/progress.json" --registry "$registry" >/dev/null || return 2
+  }
   case "$(basename "$FP" 2>/dev/null)" in
-    .agents-registry.json) exec "$0" registry "$FP" ;;
-    progress.json)         [ -f .agents-registry.json ] && exec "$0" assignments "$FP" || exit 0 ;;
+    .agents-registry.json)
+      REGISTRY="$(pin_hook_registry "$FP")" || exit 2
+      validate_hook_state "$REGISTRY" || exit 2
+      exit 0
+      ;;
+    progress.json)
+      CANDIDATE="$PROJECT_ROOT/.agents-registry.json"
+      # Include dangling links so a broken attempted registry is rejected
+      # rather than silently treated as an absent configuration.
+      if [ -e "$CANDIDATE" ] || [ -L "$CANDIDATE" ]; then
+        REGISTRY="$(pin_hook_registry "$CANDIDATE")" || exit 2
+        validate_hook_state "$REGISTRY" || exit 2
+      fi
+      exit 0
+      ;;
     *) exit 0 ;;
   esac
 fi

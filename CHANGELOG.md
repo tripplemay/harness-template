@@ -5,6 +5,20 @@
 
 ---
 
+## v1.6.4 — 2026-08-03（PostToolUse dispatch 配置 pinning）
+
+**来源：** `newkolmatrix` 接入 v1.6.3 的独立验收。
+
+- PostToolUse dispatch hook 现在和实际 dispatch 一样，将 registry 固定为当前 Git 项目根的普通
+  `.agents-registry.json`；项目外同名文件、有效符号链接和悬空符号链接一律 fail-closed。
+- 写 registry 或 `progress.json` 时，hook 依次复验 registry、角色分配与已消费 v2 signed
+  checkpoint，避免一个单独合法但已与当前 assignment / execution provenance 漂移的目录延迟到
+  实际派活时才被发现。
+- 增加 hook 回归：覆盖项目根路径、外部同名路径、有效/悬空符号链接、legacy assignment 不兼容和
+  malformed v2 checkpoint；执行入口既有的 project-root registry pinning 覆盖也改为同名外部路径。
+
+---
+
 ## v1.6.3 — 2026-08-02（strict vm-v1 Kimi bridge provider 与回执闭环）
 
 **来源：** tokenizer `BL-NATIVE-SUBAGENT-BRIDGES` 修复批次。
