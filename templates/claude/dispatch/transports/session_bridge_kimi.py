@@ -608,11 +608,18 @@ def _materialize_terminal_message(sink: Path, updates: list[dict[str, Any]], ses
         flags |= os.O_NOFOLLOW
     try:
         sink.parent.mkdir(parents=True, exist_ok=True)
+        # The commissioned artifact must be owned by the worktree principal
+        # (the vendor uid), not by whichever uid runs the driver. Under the
+        # root-supervisor model the driver is root while the worktree belongs
+        # to the dropped vendor account, so mirror the parent's ownership.
+        parent_stat = os.stat(sink.parent)
         descriptor = os.open(str(sink), flags, 0o600)
     except OSError as exc:
         raise KimiBridgeError("Kimi bridge could not materialize the terminal-message deliverable") from exc
     try:
         os.write(descriptor, payload)
+        if os.geteuid() == 0 and (parent_stat.st_uid != 0 or parent_stat.st_gid != 0):
+            os.fchown(descriptor, parent_stat.st_uid, parent_stat.st_gid)
     finally:
         os.close(descriptor)
 
