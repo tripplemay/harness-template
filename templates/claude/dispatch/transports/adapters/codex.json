@@ -31,7 +31,6 @@
   "_auth_note": "Codex 认证在 $CODEX_HOME/auth.json（默认 ~/.codex）。env -i 白名单下 HOME 被替换，故必须让它找到认证：推荐在 descriptor 写 sandbox.env_set = {\"CODEX_HOME\": \"~/.codex\"} —— 只投喂认证目录，不泄露整个真实 HOME（dispatch-mode.md §5.1 R1 的正确缓解）。若你用环境变量式认证，CODEX_HOME 白名单继承亦可。",
   "_not_used": {
     "--dangerously-bypass-approvals-and-sandbox": "禁用。绕过审批与沙箱，与机件 #7 的设计意图直接冲突",
-    "--ignore-user-config": "可选加固（不加载 config.toml，auth 仍走 CODEX_HOME）。默认不启用以免破坏用户的模型选择；对沙箱被 config 削弱的担心已由显式 -s 解决",
     "--output-schema / -o": "Codex 可原生约束「最终回复」的形状，但本框架的交付契约是**产物文件**而非消息（A2A Artifact/Message 分离）。启用会制造第二个真相源，故不用"
   },
   "_argv_placeholders": {
