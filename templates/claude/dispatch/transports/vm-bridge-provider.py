@@ -1296,6 +1296,8 @@ def _load_launch_target(path: Path, expected_provenance: str) -> dict[str, Any]:
     target = _load_json_no_duplicates(path, "bridge target")
     if target.get("invocation") != "subagent" or target.get("session_scope") != "same-session":
         raise ProviderError("bridge target is not an external same-session route")
+    if target.get("deliverable_channel") not in {"file", "terminal-message"}:
+        raise ProviderError("bridge target deliverable channel is invalid")
     if target.get("bridge_provider_id") != PROVIDER_ID or target.get("bridge_provider_kind") != PROVIDER_KIND:
         raise ProviderError("bridge target provider binding is invalid")
     if target.get("execution_provenance_sha256") != expected_provenance:
@@ -1711,13 +1713,19 @@ def _copy_archive_to_guest(
         "-n",
         "sh",
         "-ec",
-        f"umask 077; rm -rf {guest_root}; mkdir -p {guest_root}; tar -xzf - -C {guest_root}; "
+        # mkdir -p under umask 077 leaves any parent it creates 700-root, and
+        # the worker uid must traverse the full job path on a fresh VM.
+        f"umask 077; rm -rf {guest_root}; mkdir -p {guest_root}; "
+        f"chmod 711 /var/lib/harness-vm-v1 /var/lib/harness-vm-v1/jobs; "
+        f"tar -xzf - -C {guest_root}; "
         f"mkdir -p {guest_root}/cli {guest_root}/state {guest_root}/receipt; "
         f"tar -xzf {guest_root}/.harness-cli-bundle.tar.gz -C {guest_root}/cli; "
         f"rm -f {guest_root}/.harness-cli-bundle.tar.gz; test ! -e {guest_root}/source/.git; "
         f"{executable_checks} "
         f"chown -R root:root {guest_root}/cli {guest_root}/.harness-runner {guest_root}/receipt; "
-        f"chmod -R a-w {guest_root}/cli {guest_root}/.harness-runner; "
+        # a+rX before a-w: the root umask-077 extraction leaves these trees
+        # unreadable to the worker uid, and read-only alone is not enough.
+        f"chmod -R a+rX,a-w {guest_root}/cli {guest_root}/.harness-runner; "
         f"chmod 444 {guest_root}/.harness-envelope.json {guest_root}/.harness-target.json; "
         f"chown -R {WORKER_USER}:{WORKER_USER} {guest_root}/source {guest_root}/state; "
         f"chmod 700 {guest_root}/source {guest_root}/state {guest_root}/receipt; "
@@ -2553,8 +2561,12 @@ def _reconcile_returned_source(
     """Apply only the verified copy-out tree to a host-owned git checkout."""
     returned = _tree_regular_files(returned_root, "VM returned source")
     baseline = _tree_regular_files(baseline_root, "provider baseline source")
-    if artifact in baseline or artifact not in returned:
+    if artifact not in returned:
         raise ProviderError("VM returned artifact conflicts with the commissioned base")
+    # The commissioned artifact path is the envelope's declared write point, so
+    # a baseline file there is overwritten rather than refused; the overwrite
+    # is still recorded and hash-bound (FIX2 adjudication #2:A).
+    artifact_in_baseline = artifact in baseline
     changed: list[str] = []
     for relative in sorted(set(baseline) | set(returned)):
         if relative == artifact:
@@ -2580,20 +2592,28 @@ def _reconcile_returned_source(
                 overwrite=relative in baseline,
             )
     staged_artifact = _copy_regular_file_to_tree(
-        returned[artifact], staging, artifact, overwrite=False
+        returned[artifact], staging, artifact, overwrite=artifact_in_baseline
     )
-    return staged_artifact, tuple(changed)
+    if artifact_in_baseline and not _same_file_bytes(baseline[artifact], returned[artifact]):
+        changed.append(artifact)
+    return staged_artifact, tuple(sorted(changed))
 
 
 APP_BUNDLE_RELATIVE = Path("framework/templates/claude/dispatch")
 APP_RUNTIME_FILES = (
     Path("tool-catalog.py"),
+    Path("dispatch_common.py"),
     Path("validate-active-return-route.py"),
     Path("transports/vm-bridge-provider.py"),
     Path("transports/session-bridge.py"),
     Path("transports/session_bridge_kimi.py"),
     Path("transports/vm-bridge-worker.py"),
 )
+# Interpreter for re-resolving a launch target through the app bundle catalog.
+# -E -s matches -I's environment/user-site isolation while keeping the script
+# directory importable: tool-catalog.py loads its dispatch_common sibling,
+# which full isolated mode severs from sys.path.
+TARGET_RESOLUTION_PYTHON = ("/usr/bin/python3", "-E", "-s")
 
 
 def _trusted_app_bundle_root() -> Path:
@@ -2675,8 +2695,7 @@ def _resolve_launch_target(
     try:
         resolved = subprocess.run(
             [
-                "/usr/bin/python3",
-                "-I",
+                *TARGET_RESOLUTION_PYTHON,
                 str(catalog),
                 "target",
                 "--registry",
@@ -2704,7 +2723,7 @@ def _resolve_launch_target(
         tempfile.mkdtemp(prefix="harness-vm-target-", dir=str(_provider_private_runs_root()))
     ) / "target.json"
     try:
-        temp.write_text(resolved.stdout, encoding="utf-8")
+        temp.write_bytes(resolved.stdout)
         return _load_launch_target(temp, expected_provenance)
     finally:
         try:

@@ -5,6 +5,18 @@
 
 ---
 
+## v1.7.0 — 2026-08-05（三向分叉收敛：真机验证的 bridge 修复 + 声明式交付通道 + 铁律 13 + codex 硬化）
+
+**来源：** tokenizer `BL-NATIVE-SUBAGENT-BRIDGES`（三轮真机验证）+ newkolmatrix 本地 v1.6.5（铁律 13）+ newkolmatrix M5 codex 真机修复。三个下游各自持有对方没有的东西，本版一次性回流收敛。
+
+- **bridge launch 真机修复（tokenizer 三轮验证）：** target 重解析改 `-E -s`（`-I` 切断 `dispatch_common` sibling 导入，launch 必挂）；`write_bytes` 修 bytes 写入；guest staging 补 `chmod 711` 父目录链与 `a+rX,a-w`（root umask-077 目录 worker uid 无法穿越）。`dispatch_common.py` 纳入 app-bundle 身份名单（并集保留 `validate-active-return-route.py`）。
+- **声明式按角色交付通道 deliverable_channels（FIX2 #1:A）：** manifest 可声明 `file`（默认）/ `terminal-message`；只读厂商 persona（Kimi `plan`）由 driver 把根会话最终消息物化为受托 artifact（独占创建 / 0600 / 1MiB / 空文本 fail-closed），`artifact_sha256` 照常绑定 receipt。Kimi manifest 的 planner 由退让映射 `coder` 改回 `plan` + `terminal-message`。
+- **受托 artifact 覆盖点合法化（FIX2 #2:A）：** provider 归约允许受托路径覆盖 baseline，变化计入 `source_changes`。
+- **铁律 13（newkolmatrix v1.6.5）：** 交付叙述必须有机械依据；同步 generator.md §8 与 role-context/generator.md，并纳入 CI watch `--workflow` 过滤 + 探针漂移扫描两条经验。
+- **codex `--ignore-user-config` 采纳为默认（M5 真机）：** 沙箱替换 HOME 后用户 `~/.codex` 的 `~` 展开落空致 codex 秒退；派活本不应继承个人 config。此前 A 侧标为"可选、默认不启用"，本版据真机证据改默认。
+
+---
+
 ## v1.6.4 — 2026-08-03（PostToolUse dispatch 配置 pinning）
 
 **来源：** `newkolmatrix` 接入 v1.6.3 的独立验收。
