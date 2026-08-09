@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "framework_version": "1.8.1",
+  "framework_version": "1.9.0",
   "generated_by": "contract-fixtures/make-contract-fixtures.py",
   "test_only_keys": "keys/test-console.key must never be used outside fixtures",
   "schemas": {
