@@ -1,0 +1,25 @@
+{
+  "name": "missing-sig",
+  "expect": "invalid",
+  "reason": "intent without sig",
+  "mode_defaults": {
+    "intent": {
+      "intent_id": "cf-intent-0001",
+      "repo_key": "github.com/contract-fixtures/sample",
+      "expected_head_sha": "0123456789abcdef0123456789abcdef01234567",
+      "desired": {
+        "execution": {
+          "profile": "fast",
+          "role_bindings": null
+        },
+        "autonomy": {
+          "enabled": false
+        }
+      },
+      "issued_by": "contract-fixture@example.invalid",
+      "issued_at": "2026-08-09T00:00:00Z",
+      "intent_expires_at": "2126-01-01T00:00:00Z"
+    },
+    "staged_at": "2026-08-09T00:00:00Z"
+  }
+}

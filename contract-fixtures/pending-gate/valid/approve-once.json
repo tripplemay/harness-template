@@ -1,0 +1,32 @@
+{
+  "name": "approve-once",
+  "expect": "valid",
+  "checks": [
+    "schema",
+    "guard"
+  ],
+  "pending_gate": {
+    "id": "CF-BATCH-verifying-done-w1",
+    "kind": "phase_advance",
+    "raised_at": "2026-08-09T00:00:00Z",
+    "raised_by": "verify",
+    "batch": "CF-BATCH",
+    "from_status": "verifying",
+    "to_status": "done",
+    "detail": "契约 fixture：全部 acceptance PASS，等待人类批准跨 Class B 闸门",
+    "evidence": [
+      "docs/test-reports/CF-BATCH-verdict.json"
+    ],
+    "decision": {
+      "gate_id": "CF-BATCH-verifying-done-w1",
+      "action": "approve",
+      "by": "contract-fixture@example.invalid",
+      "at": "2026-08-09T00:00:00Z",
+      "note": "中文备注：批准（contract fixture）",
+      "scope": {
+        "once": true
+      },
+      "sig": "V3/q7eTfileM7Ra0uM+OfPhk2CfORJxPonp5utPKmgheNcEe+PzQRuNX8wqlIDLZrkftF+ZOgBLaN6SDXocHAA=="
+    }
+  }
+}

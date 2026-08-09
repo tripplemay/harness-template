@@ -1,0 +1,68 @@
+{
+  "vectors": [
+    {
+      "name": "simple-object",
+      "input": {
+        "b": 1,
+        "a": "x"
+      },
+      "expected": "{\"a\":\"x\",\"b\":1}"
+    },
+    {
+      "name": "nested-recursive-sort",
+      "input": {
+        "z": {
+          "y": 2,
+          "a": {
+            "c": true,
+            "b": null
+          }
+        },
+        "a": [
+          3,
+          2,
+          1
+        ]
+      },
+      "expected": "{\"a\":[3,2,1],\"z\":{\"a\":{\"b\":null,\"c\":true},\"y\":2}}"
+    },
+    {
+      "name": "chinese-unescaped",
+      "input": {
+        "note": "批准发布：第 3 轮",
+        "名称": "契约"
+      },
+      "expected": "{\"note\":\"批准发布：第 3 轮\",\"名称\":\"契约\"}"
+    },
+    {
+      "name": "emoji-and-escapes",
+      "input": {
+        "s": "line\nbreak \"quoted\" 反斜杠\\ 🔒"
+      },
+      "expected": "{\"s\":\"line\\nbreak \\\"quoted\\\" 反斜杠\\\\ 🔒\"}"
+    },
+    {
+      "name": "empty-containers",
+      "input": {
+        "o": {},
+        "arr": [],
+        "n": null
+      },
+      "expected": "{\"arr\":[],\"n\":null,\"o\":{}}"
+    },
+    {
+      "name": "decision-shape",
+      "input": {
+        "gate_id": "CF-DEMO-verifying-done-w1",
+        "action": "approve",
+        "by": "console@example.invalid",
+        "at": "2026-08-09T00:00:00Z",
+        "note": "中文备注",
+        "scope": {
+          "once": true
+        }
+      },
+      "expected": "{\"action\":\"approve\",\"at\":\"2026-08-09T00:00:00Z\",\"by\":\"console@example.invalid\",\"gate_id\":\"CF-DEMO-verifying-done-w1\",\"note\":\"中文备注\",\"scope\":{\"once\":true}}"
+    }
+  ]
+}

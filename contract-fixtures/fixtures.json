@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "framework_version": "1.8.0",
+  "generated_by": "contract-fixtures/make-contract-fixtures.py",
+  "test_only_keys": "keys/test-console.key must never be used outside fixtures",
+  "schemas": {
+    "pending-gate": "d19bf57079d00cf718d738122ebe9a2f9d39ff22683397d3245cee09c23b2334",
+    "mode-intent": "9d22845e87e13555d3adebc79b5dd37464343c2d356a400d9c56f95ddfdcd304"
+  },
+  "files": [
+    "canonical-json/vectors.json",
+    "mode-intent/invalid/autonomy-extra.json",
+    "mode-intent/invalid/extra-field.json",
+    "mode-intent/invalid/missing-sig.json",
+    "mode-intent/invalid/tampered-head.json",
+    "mode-intent/valid/fast-profile.json",
+    "pending-gate/invalid/extra-field.json",
+    "pending-gate/invalid/gate-id-mismatch.json",
+    "pending-gate/invalid/missing-sig.json",
+    "pending-gate/invalid/sig-corrupted.json",
+    "pending-gate/invalid/tampered-scope.json",
+    "pending-gate/valid/approve-once.json",
+    "pending-gate/valid/reject-no-scope.json"
+  ]
+}

@@ -14,6 +14,10 @@ on:
       - templates/claude/harness.sh
       - bootstrap.sh
       - .github/workflows/release-contract.yml
+      - contract-fixtures/**
+      - scripts/validate-contract-fixtures.py
+      - tests/test-contract-fixtures.py
+      - templates/claude/console/**
 
 jobs:
   release-contract:
@@ -25,3 +29,5 @@ jobs:
           python-version: "3.11"
       - run: python3 scripts/validate-framework-release-contract.py
       - run: python3 tests/test-framework-release-contract.py
+      - run: python3 scripts/validate-contract-fixtures.py
+      - run: python3 tests/test-contract-fixtures.py

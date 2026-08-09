@@ -1,0 +1,27 @@
+{
+  "name": "extra-field",
+  "expect": "invalid",
+  "reason": "field outside the signed-intent whitelist",
+  "mode_defaults": {
+    "intent": {
+      "intent_id": "cf-intent-0001",
+      "repo_key": "github.com/contract-fixtures/sample",
+      "expected_head_sha": "0123456789abcdef0123456789abcdef01234567",
+      "desired": {
+        "execution": {
+          "profile": "fast",
+          "role_bindings": null
+        },
+        "autonomy": {
+          "enabled": false
+        }
+      },
+      "issued_by": "contract-fixture@example.invalid",
+      "issued_at": "2026-08-09T00:00:00Z",
+      "intent_expires_at": "2126-01-01T00:00:00Z",
+      "operator_note": "not in the whitelist",
+      "sig": "MpndknI1hCUwNo2p9HWeQ4uNtkqzeZSCWgZ/Bw/TzpCIjB8tq2Pt9U7hVr0ahzLOfn/x2I+so4p+c6LB1qd5BA=="
+    },
+    "staged_at": "2026-08-09T00:00:00Z"
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "name": "autonomy-extra",
+  "expect": "invalid",
+  "reason": "autonomy off must be strictly {\"enabled\": false}",
+  "mode_defaults": {
+    "intent": {
+      "intent_id": "cf-intent-0001",
+      "repo_key": "github.com/contract-fixtures/sample",
+      "expected_head_sha": "0123456789abcdef0123456789abcdef01234567",
+      "desired": {
+        "execution": {
+          "profile": "fast",
+          "role_bindings": null
+        },
+        "autonomy": {
+          "enabled": false,
+          "budget": {
+            "max_wakes": 8
+          }
+        }
+      },
+      "issued_by": "contract-fixture@example.invalid",
+      "issued_at": "2026-08-09T00:00:00Z",
+      "intent_expires_at": "2126-01-01T00:00:00Z",
+      "sig": "bgaGs75Zo64lKWM+8ZKUd/aZBUfvFuKTP1MHom1Y38GFgfTDCM47iHHOjlX27qYfrx2FEJ8tjjNSd49C1yOVBg=="
+    },
+    "staged_at": "2026-08-09T00:00:00Z"
+  }
+}
